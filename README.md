@@ -1,40 +1,31 @@
 # Edge Multimodal Perception on Constrained Robotics Compute
 
-An asynchronous perception pipeline that runs a multimodal model **slower than
-its own sensor**, and behaves correctly anyway.
+An asynchronous perception pipeline running a multimodal model **slower than its
+own sensor**, engineered to behave correctly anyway.
 
-A camera offers ~30 frames per second. A vision-language model on an 8 GB
-Jetson services frames in hundreds of milliseconds. The system is therefore in
-permanent overload by an order of magnitude, and that is its *normal*
-operating condition. This project is about what a well-engineered system does
-in that condition: which frames it serves, how old the answer is when it
-arrives, and what it tells the consumer when something goes wrong.
+A camera offers ~30 frames per second. A vision-language model on an 8 GB Jetson
+takes hundreds of milliseconds per frame. The system is permanently overloaded by
+an order of magnitude, and that is its normal operating condition. This project is
+about what it does in that condition: which frames it serves, how old the answer is
+when it arrives, and what it tells the consumer when something goes wrong.
 
-The thesis: **a well-engineered system stays responsive and honest when an
-expensive learned component cannot keep pace with its sensor.**
-
-This is not a benchmarking project. The deliverables are defensible overload
-semantics, explicit failure handling, and one root-caused bottleneck
-investigation.
+Deliverables are defensible overload semantics, explicit failure handling, and one
+root-caused bottleneck investigation. It is not a benchmarking project.
 
 ---
 
 ## Why a VLM at all
 
 A small purpose-built detector would be better at obstacle detection than a
-generative vision-language model, faster, and easier to validate. That is
-true, and it is not what this project is testing.
+generative VLM. That is true, and not what this tests.
 
-> **This project deliberately uses a computationally expensive multimodal
-> model as a representative slow semantic perception workload. It is not
-> proposing a VLM as a replacement for real-time obstacle detection or
-> safety-critical perception.**
+> **This project deliberately uses a computationally expensive multimodal model as a
+> representative slow semantic perception workload. It is not proposing a VLM as a
+> replacement for real-time obstacle detection or safety-critical perception.**
 
-One common architecture in robotics runs cheap perception continuously and
-invokes expensive semantic reasoning far less often. This project studies the
-second kind: a slow semantic component consuming a fast sensor stream. The
-model is expensive *on purpose*, because a component that keeps up with its
-sensor produces no interesting overload behaviour to engineer.
+Robotics systems often run cheap perception continuously and expensive semantic
+reasoning rarely. This studies the second kind. The model is slow on purpose — a
+component that keeps up with its sensor produces no overload behaviour to engineer.
 
 ---
 
@@ -42,23 +33,19 @@ sensor produces no interesting overload behaviour to engineer.
 
 | gate | scope | state |
 |---|---|---|
-| 0 | Hardware-independent core: admission policies, output contract, failure taxonomy, telemetry, overload experiment | **done** |
-| 1 | Jetson feasibility: model running, memory headroom, measured camera rate, single-image baseline | pending hardware |
-| 2 | ROS 2 integration, performance budget, end-to-end run on device | pending hardware |
+| 0 | Core: admission policies, output contract, failure taxonomy, telemetry, overload experiment | **done** |
+| 1 | Jetson feasibility: model running, memory headroom, measured camera rate, baseline latency | pending hardware |
+| 2 | ROS 2 integration, performance budget, end-to-end on device | pending hardware |
 | 3 | Nsight profiling, bottleneck root cause, one justified fix, sustained load | pending hardware |
-| 4 | Diagram, demo video, README results, v0.1 | pending hardware |
+| 4 | Diagram, demo video, results, v0.1 | pending hardware |
 
-Every hardware number in `docs/` is currently marked `TBD`. Nothing in this
-repository reports an estimate as a measurement. The only numbers here today
-come from the synthetic overload experiment, and they are labelled `SIMULATED`
-in their own summary files and below.
+Hardware numbers in `docs/` are marked `TBD`. No estimate is recorded as a
+measurement. The only numbers here today come from a synthetic overload experiment
+and are labelled `SIMULATED`.
 
-The core was built ahead of hardware on purpose: the admission policy, the
-trust boundary, the failure taxonomy, and the telemetry are the parts that
-carry the argument, and none of them needs an accelerator to be designed,
-tested, or defended. `inference/` and `telemetry/` are stdlib-only and import
-nothing from ROS, CUDA, or a camera driver at module scope, so they port to
-the Jetson unchanged.
+The core was built ahead of hardware deliberately. `inference/` and `telemetry/` are
+stdlib-only and import nothing from ROS, CUDA, or a camera driver at module scope,
+so they port to the Jetson unchanged.
 
 ---
 
@@ -94,31 +81,28 @@ the Jetson unchanged.
              drop rate, invalid-output rate, extraction rate, RSS, power, health
 ```
 
-Full discussion in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
 ## Admission policy, not backpressure
 
-The precise term matters. **Backpressure slows the producer.** A camera cannot
-be slowed -- it delivers frames at its own rate whether or not anything is
-ready to receive them. The only available lever is deciding which frames to
-admit and which to discard, which is an **admission and drop policy**. Calling
-it backpressure would describe a mechanism this system does not have.
+The term matters. Backpressure slows the producer. A camera cannot be slowed — it
+delivers frames whether or not anything is ready. The only lever is deciding which
+frames to admit and which to discard: an **admission and drop policy**.
 
-If inference takes 600 ms, the system must not work through eighteen stale
-frames in sequence. A stale frame has *negative* value here, because the
-consumer cannot distinguish a three-second-old view of the world from a
-current one by reading the semantics. So the pending frame is discarded and
-the newest one is served.
+If inference takes 600 ms, the system must not work through eighteen stale frames in
+sequence. A stale frame has negative value here, because the consumer cannot tell a
+three-second-old view of the world from a current one by reading the semantics. So
+the pending frame is discarded and the newest one is served.
 
-The resulting drop rate is the design working, not the design failing. That is
-why it is reported as a headline number rather than buried.
+The resulting drop rate is the design working, not failing. That is why it is a
+headline number rather than a buried one.
 
 ### Headline result
 
-Offered 30 fps against a synthetic 0.4 s mean service time (a 12x overload),
-12 s per policy:
+30 fps offered against a synthetic 0.4 s mean service time (12x overload), 12 s per
+policy:
 
 | policy | captured | published | drop rate | result age p50 | p99 | max |
 |---|---|---|---|---|---|---|
@@ -126,50 +110,42 @@ Offered 30 fps against a synthetic 0.4 s mean service time (a 12x overload),
 | `fifo_bounded(8)` | 360 | 30 | 89.4% | 3.536 s | 3.903 s | 3.903 s |
 | `fifo_unbounded` | 361 | 30 | 0.0% | 5.861 s | 11.133 s | 11.133 s |
 
-> **`SIMULATED`.** The service-time distribution is an *input* to this
-> experiment, not a measurement of any model. These runs demonstrate the
-> admission policy's behaviour; they say nothing about how fast a real model
-> is. They live in `results/simulated/` and are never reported as baseline or
-> optimised performance. The same code produces the hardware version in Gate 2
-> by substituting the engine.
+> **`SIMULATED`.** The service time is an input to this experiment, not a measurement
+> of any model. These runs show admission-policy behaviour only. They live in
+> `results/simulated/` and are never reported as baseline or optimised performance.
+> The same code produces the hardware version in Gate 2 by swapping the engine.
 
 Reproduce: `python3 tools/run_overload_sim.py --duration 12 --latency 0.4`
 
-**Reading it.** Under `latest`, result age sits at roughly one inference
-service time and stays there: the consumer's answer is always about the most
-recent frame the system could serve. Under `fifo_bounded(8)`, result age
-saturates near `capacity x service time` -- and the frames that survive are the
-*oldest* ones, which is exactly backwards for this workload. Under
-`fifo_unbounded`, result age grows for as long as the run continues.
+Under `latest`, result age sits at roughly one inference service time. Under
+`fifo_bounded(8)` it saturates near `capacity x service time`, and the frames that
+survive are the oldest ones — backwards for this workload. Under `fifo_unbounded` it
+grows for as long as the run continues.
 
-**Being precise about the claim.** "Result age grows without bound" is true
-only for the *unbounded* FIFO. A bounded FIFO fills up and starts dropping, so
-its age is capped by queue capacity. The unbounded case is included as a
-**deliberately pathological baseline**, labelled as one, so that the claim is
-attached to the one configuration where it literally holds. The interesting
-comparison is the bounded one: both policies drop at a similar rate, and the
-difference is *which* frames survive.
+**Precision about the claim.** "Result age grows without bound" holds only for the
+*unbounded* FIFO. A bounded FIFO fills and starts dropping, so its age is capped by
+capacity. The unbounded case is a deliberately pathological baseline, labelled as
+one, so the claim attaches to the configuration where it is literally true. The real
+comparison is the bounded one: both drop at ~90%, and the difference is *which*
+frames survive.
 
 ---
 
 ## The trust boundary
 
-The single most important line in the system. The model emits semantic content
-and nothing else.
-
-The model produces only:
+The model emits semantic content and nothing else:
 
 ```json
 { "path_status": "blocked", "obstacle_location": "front_left" }
 ```
 
-and must be able to express ignorance:
+It must be able to express ignorance:
 
 ```json
 { "path_status": "unknown", "obstacle_location": "unknown" }
 ```
 
-The wrapper validates that output and then attaches trusted system metadata:
+The wrapper validates that, then attaches trusted metadata:
 
 ```json
 {
@@ -185,29 +161,25 @@ The wrapper validates that output and then attaches trusted system metadata:
 }
 ```
 
-Three decisions worth defending:
+Three decisions:
 
-- **`frame_id` is trusted metadata, never model output.** It is assigned at
-  capture and carried *alongside* the model, never *through* it. If the model
-  produced the identifier used for latency accounting, a hallucinated or
-  mangled value would mis-attribute a result to the wrong capture. That
-  corruption would not look like a bug -- it would look like jitter, and it
-  would be measured, plotted, and believed.
-- **Every duration comes from one monotonic clock.** Wall-clock time is
-  recorded once per record for humans and never subtracted from anything. An
-  NTP step correction mid-inference would otherwise silently corrupt a latency
-  or make it negative.
-- **Confidence is not in the schema.** A VLM emitting `"confidence": "high"`
-  has produced a token, not a calibrated probability. Publishing it would
-  invite a consumer to threshold on a meaningless number. Such keys are
-  stripped and counted, not forwarded.
+- **`frame_id` is trusted metadata, never model output.** It is assigned at capture
+  and carried alongside the model, not through it. If the model produced the
+  identifier used for latency accounting, a mangled value would attribute a result to
+  the wrong capture. That would not look like a bug — it would look like jitter, and
+  it would be measured, plotted, and believed.
+- **Every duration comes from one monotonic clock.** Wall-clock time is recorded once
+  per record for humans and never subtracted. An NTP step correction mid-inference
+  would otherwise corrupt a latency or make it negative.
+- **Confidence is not in the schema.** A VLM emitting `"confidence": "high"` produced
+  a token, not a calibrated probability. Publishing it invites thresholding on a
+  meaningless number. Such keys are stripped and counted, not forwarded.
 
 ---
 
 ## Failure handling
 
-A deliverable, not an afterthought. Five failure modes, each a first-class
-published outcome:
+A deliverable, not an afterthought. Five failure modes, each a published outcome:
 
 | failure | trigger |
 |---|---|
@@ -217,29 +189,26 @@ published outcome:
 | `inference_timeout` | exceeded the per-frame deadline |
 | `engine_error` | the engine raised, OOMed, or died |
 
-On any failure the pipeline **still publishes a record**, with semantics set to
-the explicit unknown state and a `validation` block naming the cause. The
-consumer always receives a well-formed record, and can distinguish "the model
-says it does not know" from "the model produced garbage" -- a distinction that
-disappears if both collapse to the same unknown.
+On any failure the pipeline still publishes a record, with semantics set to the
+explicit unknown state and a `validation` block naming the cause. The consumer always
+gets a well-formed record and can tell "the model says it does not know" from "the
+model produced garbage" — a distinction that disappears if both collapse to the same
+unknown.
 
-**Inference is never retried to obtain parseable output.** Retrying would
-distort every latency measurement (one published result silently covering two
-or three invocations) and would hide a real deployment problem inside an
-average that looks fine. Invalid-output rate is tracked on its own, broken
-down by failure kind, because "8% invalid" and "8% timeouts" call for
-different fixes.
+**Inference is never retried to get parseable output.** Retrying would distort every
+latency measurement — one published result silently covering several invocations —
+and hide a real deployment problem inside an average that looks fine.
+Invalid-output rate is tracked separately, broken down by failure kind, because "8%
+invalid" and "8% timeouts" need different fixes.
 
-One documented exception that is not a retry: a JSON object wrapped in prose
-or a ```` ```json ```` fence has its first balanced top-level object
-extracted. The model is still invoked exactly once, and the rate at which
-extraction was *needed* is reported separately so a prompt that fails to hold
-the output format stays visible.
+One documented exception that is not a retry: JSON wrapped in prose or a
+```` ```json ```` fence has its first balanced top-level object extracted. The model
+is still invoked once, and the rate at which extraction was *needed* is reported, so
+a prompt that fails to hold format stays visible.
 
-A watchdog reports a `stalled` health state when nothing has published within
-its interval. It reports; **it does not restart.** Automatic restart is out of
-scope and would obscure exactly the failures this project exists to make
-visible.
+A watchdog reports a `stalled` health state when nothing publishes within its
+interval. It reports; it does not restart. Restart is out of scope and would hide the
+failures this project exists to expose.
 
 | measured on hardware | value |
 |---|---|
@@ -251,80 +220,77 @@ visible.
 
 ## The three metrics
 
-All from one monotonic clock, all reported separately:
+All from one monotonic clock, reported separately:
 
 | metric | definition | what it tells you |
 |---|---|---|
-| queue age | `inference_start_ts - capture_ts` | how long a frame waited to be admitted -- where the admission policy shows up |
+| queue age | `inference_start_ts - capture_ts` | how long a frame waited to be admitted — where the admission policy shows up |
 | inference latency | `inference_end_ts - inference_start_ts` | model execution alone |
 | post-processing | `publish_ts - inference_end_ts` | validation, serialisation, publish |
-| **result age** | `publish_ts - capture_ts` | **primary**: what a downstream consumer actually experiences |
+| **result age** | `publish_ts - capture_ts` | **primary**: what a consumer actually experiences |
 
-The decomposition is exact by construction and asserted in the test suite. It
-is kept because "the bottleneck was JSON parsing, not the model" needs to be a
-conclusion the data can support.
+The decomposition is exact by construction and asserted in the tests. Post-processing
+is kept separate so "the bottleneck was JSON parsing, not the model" can be a
+conclusion the data supports.
 
-Queue *depth* is deliberately not reported: in a correct one-slot latest-value
-buffer it is 0 or 1 and carries no information.
+Queue *depth* is not reported: in a correct one-slot latest-value buffer it is 0 or 1
+and carries no information.
 
 ---
 
 ## Performance budget
 
-> To be set in Gate 2 **from the Gate 1 baseline measurement**, not before.
-> See [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
+> Set in Gate 2 from the Gate 1 baseline, not before. See
+> [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
 
-Called a *performance budget*, deliberately, and never an SLO. A service-level
-objective derives from system or user requirements. This number will derive
-from what the hardware turned out to be capable of, which is a different
-thing. Measuring first and then setting a defensible target is normal practice
-when there is no external requirement; the honesty is in the label.
+Called a *performance budget*, never an SLO. An SLO derives from system or user
+requirements. This number will derive from what the hardware turned out to do, which
+is a different thing. Measuring first and then setting a target is normal when there
+is no external requirement; the honesty is in the label.
 
 ---
 
 ## The bottleneck investigation
 
-> Gate 3, pending hardware. Method, hypothesis template, and the trace
-> signature of each candidate are laid out in
-> [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
+> Gate 3, pending hardware. Method, hypothesis template, and the trace signature of
+> each candidate are in [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md). Nsight trace
+> screenshot goes here.
 
-The hypothesis gets written down *before* profiling. Being wrong is a good
-README section. And if the evidence supports none of the obvious tools, the
-result is "profiling showed X dominated, so optimising Y would not have
-addressed the system bottleneck" -- which is a stronger outcome than forcing a
-tool in. TensorRT, quantisation, and Nsight are instruments here, not success
-criteria.
+The hypothesis is written down before profiling. Being wrong is a good README
+section. If the evidence supports none of the obvious tools, the result is
+"profiling showed X dominated, so optimising Y would not have addressed the system
+bottleneck" — stronger than forcing a tool in. TensorRT, quantisation, and Nsight are
+instruments, not success criteria.
 
 ---
 
 ## Quickstart
 
-No accelerator, no camera, no ROS required for the core and the overload
-experiment. Python 3.10+, standard library only.
+No accelerator, camera, or ROS needed for the core and the overload experiment.
+Python 3.10+, standard library only.
 
 ```bash
 git clone https://github.com/vivh3/edge-inference-pipeline.git
 cd edge-inference-pipeline
 
-# the headline experiment: 30 fps offered against a 0.4 s service time
+# headline experiment: 30 fps offered against a 0.4 s service time
 python3 tools/run_overload_sim.py --duration 12 --latency 0.4
 
-# same thing with faults injected, to exercise the failure taxonomy
+# same, with faults injected to exercise the failure taxonomy
 python3 tools/run_overload_sim.py --duration 12 --latency 0.4 \
     --p-malformed 0.05 --p-schema-violation 0.05 --p-timeout 0.02
 
 # tests
 pip install -e '.[dev]' && python3 -m pytest tests/ -q
 
-# optional plot of the headline figure
-pip install -e '.[plot]'
-python3 tools/plot_results.py results/simulated
+# optional plot
+pip install -e '.[plot]' && python3 tools/plot_results.py results/simulated
 ```
 
-Output lands in `results/simulated/<policy>/{results.csv,summary.json}` plus
+Output: `results/simulated/<policy>/{results.csv,summary.json}` and
 `comparison.json`.
 
-Jetson setup is a separate document: [`docs/SETUP-jetson.md`](docs/SETUP-jetson.md).
+Jetson setup: [`docs/SETUP-jetson.md`](docs/SETUP-jetson.md).
 
 ---
 
@@ -343,9 +309,9 @@ inference/     stdlib-only, hardware-independent core -- the argument lives here
   pipeline.py    async worker, health state, watchdog
 telemetry/     three metrics, rates, resource sampling, CSV/JSON output
 tools/         overload experiment, plotting
-tests/         37 tests covering the contract, the policies, and the failure paths
+tests/         37 tests: the contract, the policies, the failure paths
 docs/          architecture, Jetson setup, performance methodology
-results/       simulated/ (here now), baseline/ optimized/ traces/ (Gate 1-3)
+results/       simulated/ (now), baseline/ optimized/ traces/ (Gate 1-3)
 ros2_ws/       Gate 2 -- integration plumbing, a thin wrapper over the core
 ```
 
@@ -358,82 +324,73 @@ ros2_ws/       Gate 2 -- integration plumbing, a thin wrapper over the core
 | Python (core) | 3.10+, standard library only |
 | JetPack / L4T | `TBD` (Gate 1) |
 | model id + revision/SHA | `TBD` (Gate 1) |
-| model licence | `TBD` -- public, permissively licensed, cited |
+| model licence | `TBD` — public, permissively licensed, cited |
 | inference runtime | `TBD` (Gate 1) |
 | ROS 2 | Humble (Gate 2) |
-| power profile | `TBD` -- selected in Gate 1, held fixed for every measurement |
+| power profile | `TBD` — fixed in Gate 1, held for every measurement |
 
 ---
 
 ## Known issues and limitations
 
-- **No hardware measurements yet.** Everything in `results/` today is from a
-  synthetic engine. Its service-time distribution is an experimental input,
-  not a claim about any model.
-- **The deadline is enforced inside generation**, via a stopping criterion that
-  checks the clock between tokens. A kernel already executing cannot be
-  interrupted, so a deadline enforced from outside the call would only ever be
-  detected after the fact. A grossly overrunning single forward pass is
-  therefore bounded only by the watchdog and the health state, not by the
-  deadline.
+- **No hardware measurements yet.** Everything in `results/` is from a synthetic
+  engine whose service time is an experimental input, not a claim about any model.
+- **The deadline is enforced inside generation**, by a stopping criterion checking the
+  clock between tokens. A kernel already executing cannot be interrupted, so an
+  externally enforced deadline would only be detected after the fact. A single
+  grossly overrunning forward pass is bounded by the watchdog, not the deadline.
 - **The watchdog reports; it does not restart.** Deliberate, and out of scope.
 - **Single-threaded inference by design.** One model on one GPU is the serial
-  resource; overlapping invocations would trade result age for throughput in
-  the wrong direction for this workload.
-- **`fifo_unbounded` grows memory without bound.** It is a baseline for
-  demonstration. Do not run it long.
-- **ROS 2 usage is integration plumbing plus one considered QoS decision.**
-  That is the accurate description. Executors, lifecycle nodes, transforms,
-  composition, and DDS internals are where the real depth is, and none of them
-  is exercised here.
-- **The consistency rules in `unusable_semantics` are a design choice**, stated
-  explicitly so a reviewer can disagree with them explicitly.
-- The bounded FIFO tail-drops. Dropping the oldest instead is a third policy
-  that converges on latest-frame as capacity falls to 1; it is not implemented
-  because it adds a variant without adding an argument.
+  resource; overlapping invocations would trade result age for throughput in the
+  wrong direction here.
+- **`fifo_unbounded` grows memory without bound.** A demonstration baseline. Do not
+  run it long.
+- **ROS 2 usage is integration plumbing plus one considered QoS decision.** Executors,
+  lifecycle nodes, transforms, composition, and DDS internals are where the real depth
+  is, and none is exercised here.
+- **The `unusable_semantics` rules are a design choice**, stated explicitly so a
+  reviewer can disagree explicitly.
+- **The bounded FIFO tail-drops.** Dropping the oldest instead converges on
+  latest-frame as capacity falls to 1; not implemented, because it adds a variant
+  without adding an argument.
 
 ---
 
 ## Before this could affect actuation
 
-Nothing here is safety architecture, and the mock consumer is a logger on
-purpose. Before output of this kind could influence a physical actuator, at
-minimum:
+Nothing here is safety architecture, and the mock consumer is a logger on purpose.
+Before output of this kind could move an actuator, at minimum:
 
-- **A calibrated, validated confidence signal** -- which this system
-  deliberately does not have. Generated text expressing certainty is not a
-  probability, and the schema refuses to publish one rather than offering a
-  number that invites thresholding.
-- **A freshness contract enforced at the consumer**, not merely reported.
-  A consumer would have to reject any result older than a bound derived from
-  vehicle dynamics and stopping distance, and default to the safe action when
-  none is available. Result age is measured here; it is not enforced.
-- **Independent cross-checking** against a sensing modality that does not share
-  a failure mode with the model -- the whole point being that a hallucinated
-  `clear` and a correct `clear` are indistinguishable from inside this
-  pipeline.
-- **A defined behaviour for every failure and for the degraded and stalled
-  health states**, owned by the consumer. This system reports honestly; it does
-  not decide anything.
-- **Validation appropriate to the hazard**: coverage of the operational design
-  domain, evidence of behaviour at the edges of it, and a story for detecting
-  distribution shift in the field.
-- **Deterministic worst-case timing.** An autoregressive model whose latency
-  depends on the content of its own output is not a component whose timing can
-  be bounded by construction.
+- **A calibrated, validated confidence signal** — which this deliberately lacks.
+  Generated text expressing certainty is not a probability, and the schema refuses to
+  publish one rather than offer a number that invites thresholding.
+- **A freshness contract enforced at the consumer**, not merely reported. The consumer
+  would reject any result older than a bound derived from vehicle dynamics and
+  stopping distance, and default to the safe action when none is available. Result age
+  is measured here; it is not enforced.
+- **Independent cross-checking** against a modality that does not share a failure mode
+  with the model. A hallucinated `clear` and a correct `clear` are indistinguishable
+  from inside this pipeline.
+- **A defined consumer behaviour for every failure and for the degraded and stalled
+  health states.** This system reports honestly; it decides nothing.
+- **Validation appropriate to the hazard**: coverage of the operational design domain,
+  evidence of behaviour at its edges, and a way to detect distribution shift in the
+  field.
+- **Deterministic worst-case timing.** An autoregressive model whose latency depends on
+  the content of its own output cannot be bounded by construction.
 
 ---
 
 ## Scope
 
-Deliberately out of scope, and staying there: a quantisation matrix, TensorRT
-as a required box, Isaac Sim, training or fine-tuning, custom CUDA kernels, a
-real robot or planner, a second model or runtime, ROS 2 lifecycle nodes or
-custom executors, and elaborate process supervision beyond a basic watchdog.
+Out of scope and staying there: a quantisation matrix, TensorRT as a required box,
+Isaac Sim, training or fine-tuning, custom CUDA kernels, a real robot or planner, a
+second model or runtime, ROS 2 lifecycle nodes or custom executors, and process
+supervision beyond a basic watchdog.
 
 ---
 
 ## Licence
 
-MIT. See [`LICENSE`](LICENSE). Model weights are governed by their own licence,
-recorded in the versions table once selected.
+MIT, see [`LICENSE`](LICENSE). Model weights carry their own licence, recorded in the
+versions table once selected.
