@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/
+venv/
+
+# Nsight captures are large; keep the screenshots and summaries, not the raw traces.
+results/traces/*.nsys-rep
+results/traces/*.sqlite
