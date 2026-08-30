@@ -1,0 +1,79 @@
+{
+  "policy": "fifo_unbounded",
+  "duration_s": 12.148907652000048,
+  "frames_captured": 361,
+  "frames_admitted": 361,
+  "frames_dropped": 0,
+  "results_published": 30,
+  "drop_rate": 0.0,
+  "invalid_output_rate": 0.0,
+  "extraction_rate": 0.0,
+  "failures": {
+    "none": 30
+  },
+  "capture_fps_measured": 29.964781064376268,
+  "publish_fps_measured": 2.4693578105403713,
+  "queue_age": {
+    "n": 30,
+    "mean": 5.531889634033333,
+    "p50": 5.231251397999927,
+    "p90": 9.584382092999931,
+    "p99": 10.778076516000056,
+    "max": 10.778076516000056
+  },
+  "inference_latency": {
+    "n": 30,
+    "mean": 0.40333479383334636,
+    "p50": 0.38029516200003854,
+    "p90": 0.5685584130000052,
+    "p99": 0.8347701349999852,
+    "max": 0.8347701349999852
+  },
+  "post_processing": {
+    "n": 30,
+    "mean": 0.00010459446665815146,
+    "p50": 0.00010259600003337255,
+    "p90": 0.00011972700008300308,
+    "p99": 0.00014610599998832186,
+    "max": 0.00014610599998832186
+  },
+  "result_age": {
+    "n": 30,
+    "mean": 5.935329022333337,
+    "p50": 5.861448414999927,
+    "p90": 10.070286152999984,
+    "p99": 11.133029839000073,
+    "max": 11.133029839000073
+  },
+  "peak_rss_mb": 15.183872,
+  "mean_power_w": 0.0,
+  "clock": "time.monotonic (CLOCK_MONOTONIC)",
+  "wall_clock_start": "2026-08-30T21:16:18.882Z",
+  "notes": {
+    "SIMULATED": "synthetic engine; service time is an input, not a measurement",
+    "engine": {
+      "engine": "mock",
+      "mean_latency_s": 0.4,
+      "sigma": 0.25,
+      "faults": {
+        "malformed": 0.0,
+        "schema_violation": 0.0,
+        "unusable": 0.0,
+        "timeout": 0.0,
+        "die": 0.0
+      },
+      "note": "synthetic; not a measurement of any real model"
+    },
+    "offered_fps": 30.0,
+    "fifo_capacity": null,
+    "frames_left_in_queue_at_stop": 331,
+    "overload_ratio": 12.0,
+    "health": {
+      "health": "healthy",
+      "seconds_since_publish": 0.0004226859999789667,
+      "admission_policy": "fifo_unbounded",
+      "deadline_s": 5.0,
+      "preprocess_total_s": 0.0002777090001018223
+    }
+  }
+}

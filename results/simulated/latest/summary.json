@@ -1,0 +1,79 @@
+{
+  "policy": "latest",
+  "duration_s": 12.150598016000004,
+  "frames_captured": 361,
+  "frames_admitted": 361,
+  "frames_dropped": 330,
+  "results_published": 30,
+  "drop_rate": 0.9141274238227147,
+  "invalid_output_rate": 0.0,
+  "extraction_rate": 0.0,
+  "failures": {
+    "none": 30
+  },
+  "capture_fps_measured": 29.964862118949988,
+  "publish_fps_measured": 2.4690142790087997,
+  "queue_age": {
+    "n": 30,
+    "mean": 0.016155299633336048,
+    "p50": 0.016469656999902327,
+    "p90": 0.026872023999999328,
+    "p99": 0.030732865000004495,
+    "max": 0.030732865000004495
+  },
+  "inference_latency": {
+    "n": 30,
+    "mean": 0.4033181093999966,
+    "p50": 0.38031152499991094,
+    "p90": 0.5685255480000251,
+    "p99": 0.8346939600000951,
+    "max": 0.8346939600000951
+  },
+  "post_processing": {
+    "n": 30,
+    "mean": 0.00010967476665276384,
+    "p50": 0.00010005900003307033,
+    "p90": 0.00015551499996036,
+    "p99": 0.00017322300004707358,
+    "max": 0.00017322300004707358
+  },
+  "result_age": {
+    "n": 30,
+    "mean": 0.4195830837999855,
+    "p50": 0.406471571000111,
+    "p90": 0.5698412479999888,
+    "p99": 0.8521201689999316,
+    "max": 0.8521201689999316
+  },
+  "peak_rss_mb": 14.942208,
+  "mean_power_w": 0.0,
+  "clock": "time.monotonic (CLOCK_MONOTONIC)",
+  "wall_clock_start": "2026-08-30T21:15:54.582Z",
+  "notes": {
+    "SIMULATED": "synthetic engine; service time is an input, not a measurement",
+    "engine": {
+      "engine": "mock",
+      "mean_latency_s": 0.4,
+      "sigma": 0.25,
+      "faults": {
+        "malformed": 0.0,
+        "schema_violation": 0.0,
+        "unusable": 0.0,
+        "timeout": 0.0,
+        "die": 0.0
+      },
+      "note": "synthetic; not a measurement of any real model"
+    },
+    "offered_fps": 30.0,
+    "fifo_capacity": null,
+    "frames_left_in_queue_at_stop": 1,
+    "overload_ratio": 12.0,
+    "health": {
+      "health": "healthy",
+      "seconds_since_publish": 0.00041994900004738156,
+      "admission_policy": "latest",
+      "deadline_s": 5.0,
+      "preprocess_total_s": 0.00035957999989477685
+    }
+  }
+}

@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "edge-perception-pipeline"
+version = "0.1.0.dev0"
+description = "Asynchronous multimodal perception pipeline with latest-frame admission for constrained robotics compute"
+requires-python = ">=3.10"
+# The runtime core is intentionally stdlib-only so it installs on the Jetson
+# without a dependency fight and runs from a fresh clone on any machine.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+plot = ["matplotlib>=3.5"]
+
+[tool.setuptools]
+packages = ["inference", "telemetry"]
