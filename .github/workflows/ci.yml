@@ -52,3 +52,15 @@ jobs:
         run: |
           python3 tools/run_overload_sim.py --duration 4 --latency 0.2 \
             --policies latest --p-malformed 0.2 --p-schema-violation 0.2
+
+  docs-match-results:
+    # The README's headline table and the committed JSON summaries are two
+    # copies of the same numbers. They drifted apart once; this stops it.
+    name: README table matches committed results
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 tools/check_readme_matches_results.py

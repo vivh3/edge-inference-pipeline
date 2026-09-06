@@ -106,9 +106,9 @@ policy:
 
 | policy | captured | published | drop rate | result age p50 | p99 | max |
 |---|---|---|---|---|---|---|
-| `latest` | 361 | 30 | 91.4% | **0.405 s** | 0.849 s | 0.849 s |
-| `fifo_bounded(8)` | 361 | 30 | 89.5% | 3.532 s | 3.901 s | 3.901 s |
-| `fifo_unbounded` | 361 | 30 | 0.0% | 5.858 s | 11.127 s | 11.127 s |
+| `latest` | 361 | 30 | 91.4% | **0.405 s** | 0.850 s | 0.850 s |
+| `fifo_bounded(8)` | 361 | 30 | 89.5% | 3.533 s | 3.902 s | 3.902 s |
+| `fifo_unbounded` | 361 | 30 | 0.0% | 5.860 s | 11.131 s | 11.131 s |
 
 > **`SIMULATED`.** The service time is an input to this experiment, not a measurement
 > of any model. These runs show admission-policy behaviour only. They live in
