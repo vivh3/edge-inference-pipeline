@@ -1,8 +1,7 @@
 {
   "policy": "fifo_unbounded",
-  "duration_s": 12.148907652000048,
+  "duration_s": 12.147290502000033,
   "frames_captured": 361,
-  "frames_admitted": 361,
   "frames_dropped": 0,
   "results_published": 30,
   "drop_rate": 0.0,
@@ -11,44 +10,52 @@
   "failures": {
     "none": 30
   },
-  "capture_fps_measured": 29.964781064376268,
-  "publish_fps_measured": 2.4693578105403713,
+  "capture_fps_measured": 29.964731730494428,
+  "publish_fps_measured": 2.4696865523270843,
   "queue_age": {
     "n": 30,
-    "mean": 5.531889634033333,
-    "p50": 5.231251397999927,
-    "p90": 9.584382092999931,
-    "p99": 10.778076516000056,
-    "max": 10.778076516000056
+    "mean": 5.530699996100001,
+    "p50": 5.230250135000006,
+    "p90": 9.581853636000005,
+    "p99": 10.775523358999976,
+    "max": 10.775523358999976
+  },
+  "preprocess": {
+    "n": 30,
+    "mean": 1.19852666633354e-05,
+    "p50": 1.966000013453595e-06,
+    "p90": 2.4889999394872575e-06,
+    "p99": 0.0002996700000039709,
+    "max": 0.0002996700000039709
   },
   "inference_latency": {
     "n": 30,
-    "mean": 0.40333479383334636,
-    "p50": 0.38029516200003854,
-    "p90": 0.5685584130000052,
-    "p99": 0.8347701349999852,
-    "max": 0.8347701349999852
+    "mean": 0.403329101499988,
+    "p50": 0.3803241430000526,
+    "p90": 0.5686103000000458,
+    "p99": 0.8347024470000406,
+    "max": 0.8347024470000406
   },
   "post_processing": {
     "n": 30,
-    "mean": 0.00010459446665815146,
-    "p50": 0.00010259600003337255,
-    "p90": 0.00011972700008300308,
-    "p99": 0.00014610599998832186,
-    "max": 0.00014610599998832186
+    "mean": 0.00011670306666928809,
+    "p50": 0.00011153100001592975,
+    "p90": 0.00014799300004142424,
+    "p99": 0.00016116200004034908,
+    "max": 0.00016116200004034908
   },
   "result_age": {
     "n": 30,
-    "mean": 5.935329022333337,
-    "p50": 5.861448414999927,
-    "p90": 10.070286152999984,
-    "p99": 11.133029839000073,
-    "max": 11.133029839000073
+    "mean": 5.934145800666658,
+    "p50": 5.860487075000037,
+    "p90": 10.06776714,
+    "p99": 11.130575111999974,
+    "max": 11.130575111999974
   },
-  "peak_rss_mb": 15.183872,
+  "peak_rss_mb": 15.273984,
   "mean_power_w": 0.0,
   "clock": "time.monotonic (CLOCK_MONOTONIC)",
-  "wall_clock_start": "2026-08-30T21:16:18.882Z",
+  "wall_clock_start": "2026-09-06T02:00:03.930Z",
   "notes": {
     "SIMULATED": "synthetic engine; service time is an input, not a measurement",
     "engine": {
@@ -64,16 +71,19 @@
       },
       "note": "synthetic; not a measurement of any real model"
     },
+    "preprocess_backend": "passthrough",
     "offered_fps": 30.0,
     "fifo_capacity": null,
     "frames_left_in_queue_at_stop": 331,
     "overload_ratio": 12.0,
     "health": {
       "health": "healthy",
-      "seconds_since_publish": 0.0004226859999789667,
+      "seconds_since_publish": 0.0003062449999333694,
       "admission_policy": "fifo_unbounded",
       "deadline_s": 5.0,
-      "preprocess_total_s": 0.0002777090001018223
+      "preprocess_total_s": 0.000359557999900062,
+      "consumer_errors": 0,
+      "last_consumer_error": ""
     }
   }
 }
