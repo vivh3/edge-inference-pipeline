@@ -1,21 +1,19 @@
 """Admission policies: what happens to a frame between capture and inference.
 
-Terminology, deliberately: this is *admission and drop policy*, not
-backpressure.  Backpressure slows the producer.  A camera cannot be slowed --
-it delivers frames at its own rate whether or not anyone is ready -- so the
-only lever this system has is deciding which frames to admit and which to
-discard.  Saying "backpressure" here would describe a mechanism that does not
-exist.
+Deliberately *admission and drop policy*, not backpressure. Backpressure
+slows the producer; a camera cannot be slowed, so the only lever is deciding
+which frames to admit and which to discard. Saying "backpressure" would name a
+mechanism this system does not have.
 
-Three policies are implemented so the design choice can be defended against
-its alternatives with measurements rather than assertion:
+Three policies, so the design choice can be defended with measurements rather
+than assertion:
 
-  LatestFrameBuffer   capacity 1, newest wins.  The design choice.
-  BoundedFifo(n)      classic tail-drop queue.  The realistic alternative.
-  UnboundedFifo       never drops.  A deliberately pathological baseline.
+  LatestFrameBuffer   capacity 1, newest wins. The design choice.
+  BoundedFifo(n)      classic tail-drop queue. The realistic alternative.
+  UnboundedFifo       never drops. A deliberately pathological baseline.
 
-All three share one interface so the pipeline is policy-agnostic and a single
-experiment can swap between them with nothing else changing.
+One shared interface, so an experiment swaps between them with nothing else
+changing.
 """
 
 from __future__ import annotations
@@ -120,17 +118,15 @@ class AdmissionPolicy:
 class LatestFrameBuffer(AdmissionPolicy):
     """Capacity-1 overwrite buffer. A newer frame always displaces an older one.
 
-    The argument: for this workload a stale frame has negative value.  Acting
-    on a 3-second-old view of the world is worse than acting on nothing,
-    because the consumer cannot tell the difference from the semantics alone.
-    So when inference is busy and a new frame arrives, the pending frame is
-    discarded rather than queued.
+    A stale frame has negative value here: the consumer cannot tell a
+    3-second-old view of the world from a current one by reading the
+    semantics, so a confidently wrong old answer is worse than none. When a
+    new frame arrives and inference is busy, the pending one is discarded.
 
-    Consequence, stated plainly: result age is bounded by roughly one
-    inference service time plus one inter-frame interval, and the cost is a
-    drop rate that rises with the overload ratio.  Drops are the design
-    working, not the design failing -- which is why drop rate is reported as
-    a headline number rather than buried.
+    The cost, stated plainly: result age stays near one inference service time
+    plus one inter-frame interval, and drop rate rises with the overload
+    ratio. Drops are the design working, which is why drop rate is a headline
+    number rather than a buried one.
     """
 
     name = "latest"
@@ -152,15 +148,15 @@ class LatestFrameBuffer(AdmissionPolicy):
 class BoundedFifo(AdmissionPolicy):
     """Tail-drop FIFO: when full, the *incoming* frame is discarded.
 
-    The honest comparison for latest-frame.  It also drops under overload, so
-    result age does not grow without bound -- it saturates at roughly
-    capacity x service time.  That ceiling is the point of running this
-    baseline: it makes the difference between the two policies a matter of
-    *which* frames survive, not merely whether anything is dropped.
+    The honest comparison for latest-frame. It drops too, so result age does
+    not grow without bound -- it saturates near (capacity + 1) x service time,
+    since a frame admitted to a full queue waits behind `capacity` others and
+    then pays for its own inference. That ceiling is the point: it makes the
+    difference between the policies a matter of *which* frames survive, not
+    whether anything is dropped.
 
-    Dropping the oldest instead would be a third policy that converges on
-    latest-frame as capacity falls to 1; it is not implemented because it
-    adds a variant without adding an argument.
+    Dropping the oldest instead converges on latest-frame as capacity falls to
+    1; not implemented, because it adds a variant without adding an argument.
     """
 
     name = "fifo_bounded"
@@ -183,10 +179,9 @@ class BoundedFifo(AdmissionPolicy):
 class UnboundedFifo(AdmissionPolicy):
     """Never drops. A deliberately pathological baseline, labelled as one.
 
-    This is the only configuration in which "result age grows without bound"
-    is literally true, and it is included precisely so that claim is made
-    about the configuration where it holds rather than about queueing in
-    general.  Memory also grows without bound; do not run it long.
+    The only configuration where "result age grows without bound" is literally
+    true, included so the claim attaches to where it holds rather than to
+    queueing in general. Memory grows without bound too; do not run it long.
     """
 
     name = "fifo_unbounded"

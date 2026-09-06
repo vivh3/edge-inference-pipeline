@@ -1,14 +1,12 @@
 """Record types, organised around the trust boundary.
 
-The model is an untrusted component.  It emits semantic content and nothing
-else.  Identifiers and timestamps are attached by this wrapper, which is
-trusted, after the model has been validated.
+The model emits semantic content and nothing else.  Identifiers and
+timestamps are attached here, after validation, by trusted code.
 
-If the model were allowed to emit `frame_id`, a hallucinated or mangled
-value would silently corrupt latency accounting -- results would be matched
-to the wrong capture and the error would look like jitter rather than a
-bug.  So `frame_id` is assigned by the capture stage and carried alongside
-the model, never through it.
+If the model emitted `frame_id`, a hallucinated value would match a result to
+the wrong capture and corrupt latency accounting -- and the error would look
+like jitter, not a bug.  So `frame_id` is assigned at capture and carried
+alongside the model, never through it.
 """
 
 from __future__ import annotations
@@ -74,16 +72,23 @@ class PublishedResult:
     publish_ts: float
     wall_clock: str
     semantic: dict
-    # Trusted validation report. Present on every record so a consumer never
-    # has to guess whether `semantic` came from the model or from the
-    # unknown-state fallback.
+    # Trusted validation report, on every record, so a consumer never has to
+    # guess whether `semantic` came from the model or from the unknown-state
+    # fallback.
     validation: dict = field(default_factory=dict)
+    # Preprocessing cost for this frame. It falls inside `queue_age` (the
+    # worker preprocesses before the engine stamps its start), so it is
+    # reported separately rather than being lost inside the wait.
+    preprocess_s: float = 0.0
 
     # --- derived durations (all from the monotonic clock) ------------------
 
     @property
     def queue_age(self) -> float:
-        """capture -> inference start. Time the frame waited to be admitted."""
+        """capture -> inference start: waiting, plus this frame's preprocessing.
+
+        Subtract `preprocess_s` for the pure queueing component.
+        """
         return self.inference_start_ts - self.capture_ts
 
     @property
@@ -111,6 +116,7 @@ class PublishedResult:
             "wall_clock": self.wall_clock,
             "semantic": self.semantic,
             "validation": self.validation,
+            "preprocess_s": round(self.preprocess_s, 6),
         }
 
 
@@ -119,6 +125,7 @@ def attach_metadata(
     raw: RawModelOutput,
     semantic: dict,
     validation: dict,
+    preprocess_s: float = 0.0,
 ) -> PublishedResult:
     """Wrap validated semantics in trusted metadata and stamp the publish time."""
     return PublishedResult(
@@ -130,4 +137,5 @@ def attach_metadata(
         wall_clock=wall_clock_iso(),
         semantic=semantic,
         validation=validation,
+        preprocess_s=preprocess_s,
     )

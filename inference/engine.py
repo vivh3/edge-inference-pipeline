@@ -1,21 +1,18 @@
 """Inference engines.
 
-The pipeline talks to exactly one interface, `InferenceEngine`, so the
-admission policy, validation, telemetry, and failure handling can be built,
-tested, and reasoned about before any model exists -- and so the model can be
-swapped in Gate 1 without touching anything else.
+The pipeline talks to one interface, so admission, validation, telemetry and
+failure handling can be built and tested before any model exists -- and the
+model can be swapped in Gate 1 without touching anything else.
 
-Two implementations live here:
+  MockEngine  synthetic slow component: controllable service-time
+              distribution, injectable faults. Exercises overload and failure
+              paths deterministically on any machine. It measures nothing
+              about a real model and its numbers are never reported as
+              performance results.
 
-  MockEngine  -- a synthetic slow component with a controllable service-time
-                 distribution and injectable faults.  Its purpose is to
-                 exercise overload and failure paths deterministically on any
-                 machine.  It measures nothing about a real model and its
-                 numbers are never reported as performance results.
-
-  VlmEngine   -- the Hugging Face adapter.  Gate 1 confirms the concrete
-                 model and processor classes on hardware; the seam is fixed
-                 here so nothing downstream depends on that choice.
+  VlmEngine   the Hugging Face adapter. Gate 1 confirms the concrete model and
+              processor classes on hardware; the seam is fixed here so nothing
+              downstream depends on that choice.
 """
 
 from __future__ import annotations

@@ -89,6 +89,7 @@ def run_one(policy_name: str, args) -> dict:
     notes = {
         "SIMULATED": "synthetic engine; service time is an input, not a measurement",
         "engine": engine.describe(),
+        "preprocess_backend": pipeline.preprocessor.backend,
         "offered_fps": args.fps,
         "fifo_capacity": args.fifo_capacity if policy_name == "fifo_bounded" else None,
         "frames_left_in_queue_at_stop": backlog,

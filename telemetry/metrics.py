@@ -1,32 +1,32 @@
-"""Telemetry: the three latency metrics, the rates, and resource sampling.
+"""Telemetry: the latency metrics, the rates, and resource sampling.
 
-Three durations are reported separately because they answer different
-questions and an average of the wrong one hides the interesting behaviour:
+Durations are reported separately because an average of the wrong one hides
+the behaviour that matters:
 
-  queue age        capture -> inference start.  How long a frame waited to be
-                   admitted.  This is where an admission policy shows up.
-  inference latency inference start -> result complete.  Model execution.
-                   Roughly invariant to the admission policy; if it moves
-                   when the policy changes, something else is wrong.
-  result age       capture -> publish.  The primary metric, because it is the
-                   only one a downstream consumer actually experiences.
+  queue age         capture -> inference start. Waiting, plus this frame's
+                    preprocessing. Where the admission policy shows up.
+  preprocess        broken out of queue age so it stays attributable.
+  inference latency inference start -> result complete. Model execution.
+                    Should be roughly invariant to the admission policy.
+  post-processing   result complete -> publish. Validation and serialisation,
+                    kept separate so "the bottleneck was JSON parsing, not the
+                    model" is a conclusion the data can support.
+  result age        capture -> publish. Primary: the only one a consumer
+                    actually experiences.
 
-Post-processing overhead (result complete -> publish) is derived too, so that
-"the bottleneck was JSON parsing, not the model" is a conclusion the data can
-support rather than one that has to be assumed away.
+Rates: drop rate is dropped / captured, against frames that actually arrived
+rather than a nominal 30 fps. Invalid-output rate is broken out by failure
+kind, because "8% invalid" and "8% timeouts" need different fixes.
 
-Two rates:
+Frames admitted is deliberately not reported. Under latest-frame a frame can
+be admitted and then evicted before it runs, so the count means something
+different per policy and is not comparable across the policies being
+compared. Captured, dropped and published are unambiguous, and
+`dropped + published` accounts for every captured frame bar the one in
+flight.
 
-  drop rate            dropped / captured, computed against frames actually
-                       captured.  A cheap USB camera does not deliver a
-                       steady 30 fps, and computing against a nominal rate
-                       would fabricate or hide drops.
-  invalid-output rate  results whose validation failed / results published.
-                       Broken out by failure kind, because "8% invalid" and
-                       "8% timeouts" call for different fixes.
-
-Queue depth is deliberately not reported: in a correct one-slot latest-value
-buffer it is 0 or 1 and carries no information.
+Queue depth is not reported either: in a correct one-slot buffer it is 0 or 1
+and carries no information.
 """
 
 from __future__ import annotations
@@ -36,12 +36,15 @@ import json
 import os
 import threading
 from dataclasses import asdict, dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from inference.clock import CLOCK_NAME, monotonic, wall_clock_iso
 from inference.schema import Failure
 
-__all__ = ["ResultRow", "Summary", "Metrics", "percentile", "read_rss_bytes", "read_jetson_power_w"]
+__all__ = [
+    "ResultRow", "Summary", "Metrics", "percentile",
+    "read_rss_bytes", "read_jetson_power_w", "jetson_power_rail_names",
+]
 
 
 def percentile(values: List[float], q: float) -> float:
@@ -66,6 +69,7 @@ class ResultRow:
     inference_end_ts: float
     publish_ts: float
     queue_age: float
+    preprocess_s: float
     inference_latency: float
     post_processing: float
     result_age: float
@@ -83,7 +87,6 @@ class Summary:
     policy: str
     duration_s: float
     frames_captured: int
-    frames_admitted: int
     frames_dropped: int
     results_published: int
     drop_rate: float
@@ -92,10 +95,11 @@ class Summary:
     failures: Dict[str, int]
     capture_fps_measured: float
     publish_fps_measured: float
-    queue_age: Dict[str, float]
-    inference_latency: Dict[str, float]
-    post_processing: Dict[str, float]
-    result_age: Dict[str, float]
+    queue_age: Dict[str, Optional[float]]
+    preprocess: Dict[str, Optional[float]]
+    inference_latency: Dict[str, Optional[float]]
+    post_processing: Dict[str, Optional[float]]
+    result_age: Dict[str, Optional[float]]
     peak_rss_mb: float
     mean_power_w: float
     clock: str = CLOCK_NAME
@@ -103,10 +107,10 @@ class Summary:
     notes: Dict[str, object] = field(default_factory=dict)
 
 
-def _stats(values: List[float]) -> Dict[str, float]:
+def _stats(values: List[float]) -> Dict[str, Optional[float]]:
+    # None, not NaN: bare NaN is not valid JSON and json.dump emits it anyway.
     if not values:
-        return {"n": 0, "mean": float("nan"), "p50": float("nan"),
-                "p90": float("nan"), "p99": float("nan"), "max": float("nan")}
+        return {"n": 0, "mean": None, "p50": None, "p90": None, "p99": None, "max": None}
     return {
         "n": len(values),
         "mean": sum(values) / len(values),
@@ -140,25 +144,47 @@ def read_rss_bytes() -> int:
     return 0
 
 
-def read_jetson_power_w() -> float:
-    """Instantaneous module power in watts from the Jetson INA3221 rails.
+# INA3221 exposes per-rail channels alongside an aggregate. Summing all of
+# them double-counts the total against its own constituents, so aggregates are
+# skipped by label.
+_AGGREGATE_RAIL = ("total", "sum", "all")
+_POWER_GLOB = "/sys/bus/i2c/drivers/ina3221*/*/hwmon/hwmon*/power*_input"
 
-    Returns 0.0 off-target.  Path layout differs between JetPack releases, so
-    this scans rather than hard-coding an index; the rail actually read is
-    recorded in the run notes.
-    """
+
+def _power_rails() -> List[Tuple[str, float]]:
+    """(label, watts) per Jetson power rail, aggregates excluded. Empty off-target."""
     import glob
+    import os
 
-    total_mw = 0
-    found = False
-    for path in glob.glob("/sys/bus/i2c/drivers/ina3221*/*/hwmon/hwmon*/power*_input"):
+    rails = []
+    for path in sorted(glob.glob(_POWER_GLOB)):
+        label_path = path.replace("_input", "_label")
         try:
             with open(path) as fh:
-                total_mw += int(fh.read().strip())
-                found = True
+                watts = int(fh.read().strip()) / 1000.0
         except (OSError, ValueError):
             continue
-    return (total_mw / 1000.0) if found else 0.0
+        label = ""
+        if os.path.exists(label_path):
+            try:
+                with open(label_path) as fh:
+                    label = fh.read().strip()
+            except OSError:
+                pass
+        if any(word in label.lower() for word in _AGGREGATE_RAIL):
+            continue
+        rails.append((label or os.path.basename(path), watts))
+    return rails
+
+
+def read_jetson_power_w() -> float:
+    """Module power in watts, summed over the non-aggregate rails. 0.0 off-target."""
+    return sum(watts for _, watts in _power_rails())
+
+
+def jetson_power_rail_names() -> List[str]:
+    """Labels of the rails being summed. Recorded once in the run notes."""
+    return [label for label, _ in _power_rails()]
 
 
 # --------------------------------------------------------------------------
@@ -175,12 +201,19 @@ class Metrics:
         self._lock = threading.Lock()
         self.rows: List[ResultRow] = []
         self.frames_captured = 0
-        self.frames_admitted = 0
         self.frames_dropped = 0
         self.failures: Dict[str, int] = {f.value: 0 for f in Failure}
         self.extracted_count = 0
         self.peak_rss = 0
         self.power_samples: List[float] = []
+        # Resource reads touch /proc and /sys. Doing that per result puts two
+        # syscall-heavy reads on the worker thread between frames, which shows
+        # up as queue age on the next one. Sample on an interval instead and
+        # reuse the last value in between.
+        self.sample_interval = 1.0
+        self._last_sample_ts = -1e9
+        self._last_rss = 0
+        self._last_power = 0.0
         self.start_ts = monotonic()
         self.start_wall = wall_clock_iso()
         self.first_capture_ts: Optional[float] = None
@@ -198,18 +231,25 @@ class Metrics:
                 self.capture_intervals.append(capture_ts - self.last_capture_ts)
             self.last_capture_ts = capture_ts
 
-    def on_admission(self, accepted: bool, dropped: bool) -> None:
+    def on_drop(self) -> None:
+        """One captured frame will never reach inference."""
         with self._lock:
-            if accepted:
-                self.frames_admitted += 1
-            if dropped:
-                self.frames_dropped += 1
+            self.frames_dropped += 1
 
     # -- publish side ------------------------------------------------------
 
+    def _sample_resources(self) -> Tuple[int, float]:
+        if not self.sample_resources:
+            return 0, 0.0
+        now = monotonic()
+        if now - self._last_sample_ts >= self.sample_interval:
+            self._last_sample_ts = now
+            self._last_rss = read_rss_bytes()
+            self._last_power = read_jetson_power_w()
+        return self._last_rss, self._last_power
+
     def on_publish(self, result) -> ResultRow:
-        rss = read_rss_bytes() if self.sample_resources else 0
-        power = read_jetson_power_w() if self.sample_resources else 0.0
+        rss, power = self._sample_resources()
         v = result.validation
         row = ResultRow(
             frame_id=result.frame_id,
@@ -218,6 +258,7 @@ class Metrics:
             inference_end_ts=result.inference_end_ts,
             publish_ts=result.publish_ts,
             queue_age=result.queue_age,
+            preprocess_s=result.preprocess_s,
             inference_latency=result.inference_latency,
             post_processing=result.post_processing,
             result_age=result.result_age,
@@ -246,7 +287,6 @@ class Metrics:
             rows = list(self.rows)
             captured = self.frames_captured
             dropped = self.frames_dropped
-            admitted = self.frames_admitted
             failures = dict(self.failures)
             extracted = self.extracted_count
             intervals = list(self.capture_intervals)
@@ -264,7 +304,6 @@ class Metrics:
             policy=self.policy_name,
             duration_s=duration,
             frames_captured=captured,
-            frames_admitted=admitted,
             frames_dropped=dropped,
             results_published=published,
             # Against frames actually captured, never against a nominal rate.
@@ -275,6 +314,7 @@ class Metrics:
             capture_fps_measured=((captured - 1) / capture_span) if capture_span > 0 else 0.0,
             publish_fps_measured=(published / duration) if duration > 0 else 0.0,
             queue_age=_stats([r.queue_age for r in rows]),
+            preprocess=_stats([r.preprocess_s for r in rows]),
             inference_latency=_stats([r.inference_latency for r in rows]),
             post_processing=_stats([r.post_processing for r in rows]),
             result_age=_stats([r.result_age for r in rows]),

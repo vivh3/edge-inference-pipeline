@@ -1,6 +1,6 @@
 """Output contract, validation, and the failure taxonomy.
 
-The model emits *only* untrusted semantic fields:
+The model emits only untrusted semantic fields:
 
     {"path_status": "blocked", "obstacle_location": "front_left"}
 
@@ -8,18 +8,15 @@ and must be able to express ignorance:
 
     {"path_status": "unknown", "obstacle_location": "unknown"}
 
-Everything a generative model can do wrong at this boundary is enumerated in
-`Failure`.  Each failure is a first-class outcome with its own counter: the
-pipeline never retries inference to obtain parseable output.  Retrying would
-distort the latency measurements (one published result would hide two or
-three model invocations) and would hide a real deployment problem behind an
-average that looks fine.
+`Failure` enumerates every way a result can be unusable.  Each is a published
+outcome with its own counter; inference is never retried to obtain parseable
+output.  A retry would hide two or three model invocations inside one
+published latency, and would bury a real deployment problem in an average
+that looks fine.
 
-On any failure the pipeline still publishes a record, with the semantics set
-to the explicit unknown state and `validation` naming the failure.  A
-consumer therefore always receives a well-formed record and can distinguish
-"the model says it does not know" from "the model produced garbage" by
-reading `validation.failure`.
+On failure the pipeline still publishes a record, with semantics set to the
+explicit unknown state and `validation` naming the cause -- so a consumer can
+tell "the model says it does not know" from "the model produced garbage".
 """
 
 from __future__ import annotations
@@ -40,20 +37,25 @@ __all__ = [
 
 
 class Failure(str, enum.Enum):
-    """The complete set of ways a model result can fail to be usable."""
+    """Every way a published result can fail to be usable.
+
+    The first three are the model's fault, the next two the engine's, and
+    `PIPELINE_ERROR` is ours.  Keeping them separate matters: "8% invalid" and
+    "8% timeouts" call for entirely different fixes, and folding our own bugs
+    into `ENGINE_ERROR` would blame the model for them.
+    """
 
     NONE = "none"
-    MALFORMED_JSON = "malformed_json"          # not parseable as a JSON object
+    MALFORMED_JSON = "malformed_json"          # no parseable JSON object
     SCHEMA_VIOLATION = "schema_violation"      # parses, wrong shape/keys/values
     UNUSABLE_SEMANTICS = "unusable_semantics"  # valid values, self-contradictory
     INFERENCE_TIMEOUT = "inference_timeout"    # exceeded the per-frame deadline
     ENGINE_ERROR = "engine_error"              # engine raised / process died
+    PIPELINE_ERROR = "pipeline_error"          # a stage around the engine raised
 
 
-# --- the enumerated vocabulary --------------------------------------------
-#
-# A closed vocabulary is what makes "schema violation" a detectable event at
-# all.  Free-text semantics would make every output trivially "valid" and the
+# A closed vocabulary is what makes "schema violation" detectable at all.
+# Free-text semantics would make every output trivially valid and the
 # invalid-output rate meaningless.
 
 PATH_STATUS_VALUES = ("clear", "blocked", "unknown")
@@ -106,15 +108,12 @@ def extract_json_object(text: str) -> Tuple[Optional[str], bool]:
 
     Returns ``(json_text, needed_extraction)``.
 
-    Instruction-tuned models routinely wrap JSON in prose or a ```json fence
-    even when told not to.  This is one documented, deterministic parsing
-    step -- scan for the first balanced top-level ``{...}`` -- not a retry:
-    the model is invoked exactly once per admitted frame either way.
-
-    ``needed_extraction`` is reported so the rate at which the model fails to
-    respect the output format stays visible.  A high extraction rate is a
-    prompt problem worth fixing, and averaging it into "valid output" would
-    hide it.
+    Instruction-tuned models wrap JSON in prose or a ```json fence even when
+    told not to, so this scans for the first balanced top-level ``{...}``.
+    It is one deterministic parsing step, not a retry: the model is invoked
+    exactly once per admitted frame either way.  ``needed_extraction`` is
+    reported separately so a prompt that keeps losing the output format stays
+    visible instead of being averaged into "valid".
     """
     stripped = text.strip()
     if stripped.startswith("{") and stripped.endswith("}"):
@@ -140,8 +139,10 @@ def extract_json_object(text: str) -> Tuple[Optional[str], bool]:
                 start = i
             depth += 1
         elif ch == "}":
+            if depth == 0:
+                continue  # stray closer, e.g. a truncated object before this one
             depth -= 1
-            if depth == 0 and start >= 0:
+            if depth == 0:
                 return text[start : i + 1], True
     return None, False
 
