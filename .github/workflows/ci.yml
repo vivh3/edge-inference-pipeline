@@ -1,0 +1,54 @@
+name: CI
+
+# Pushes to a branch with an open PR would otherwise run twice: once for the
+# push and once for the pull_request. Restricting push to main gives one run
+# per PR commit, plus a post-merge run on main.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  tests:
+    name: pytest (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 is the floor declared in pyproject.toml; the others guard against
+        # drift. The core is stdlib-only, so there is nothing else to pin.
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install
+        run: pip install -e '.[dev]'
+
+      - name: Run tests
+        run: pytest tests/ -q
+
+  quickstart:
+    # The README claims the overload experiment runs from a fresh clone with no
+    # accelerator, camera, or third-party package. This job is what makes that
+    # claim checkable rather than asserted.
+    name: quickstart from a fresh clone
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Overload experiment, no install step
+        run: python3 tools/run_overload_sim.py --duration 4 --latency 0.2
+
+      - name: Failure taxonomy is reachable
+        run: |
+          python3 tools/run_overload_sim.py --duration 4 --latency 0.2 \
+            --policies latest --p-malformed 0.2 --p-schema-violation 0.2

@@ -1,0 +1,79 @@
+{
+  "policy": "fifo_bounded",
+  "duration_s": 12.147751733000064,
+  "frames_captured": 360,
+  "frames_admitted": 38,
+  "frames_dropped": 322,
+  "results_published": 30,
+  "drop_rate": 0.8944444444444445,
+  "invalid_output_rate": 0.0,
+  "extraction_rate": 0.0,
+  "failures": {
+    "none": 30
+  },
+  "capture_fps_measured": 29.960083471429655,
+  "publish_fps_measured": 2.4695927822185633,
+  "queue_age": {
+    "n": 30,
+    "mean": 2.7084845527000083,
+    "p50": 3.081665826999938,
+    "p90": 3.3954744800000753,
+    "p99": 3.5244347919999655,
+    "max": 3.5244347919999655
+  },
+  "inference_latency": {
+    "n": 30,
+    "mean": 0.4033274322666557,
+    "p50": 0.38030990499999007,
+    "p90": 0.5686479489999101,
+    "p99": 0.834705400999951,
+    "max": 0.834705400999951
+  },
+  "post_processing": {
+    "n": 30,
+    "mean": 9.259123333246558e-05,
+    "p50": 8.973399997103115e-05,
+    "p90": 0.00010292299998582166,
+    "p99": 0.0001183320000563981,
+    "max": 0.0001183320000563981
+  },
+  "result_age": {
+    "n": 30,
+    "mean": 3.1119045761999966,
+    "p50": 3.5362055750000536,
+    "p90": 3.7437555379999594,
+    "p99": 3.903068894999933,
+    "max": 3.903068894999933
+  },
+  "peak_rss_mb": 15.07328,
+  "mean_power_w": 0.0,
+  "clock": "time.monotonic (CLOCK_MONOTONIC)",
+  "wall_clock_start": "2026-08-30T21:16:06.733Z",
+  "notes": {
+    "SIMULATED": "synthetic engine; service time is an input, not a measurement",
+    "engine": {
+      "engine": "mock",
+      "mean_latency_s": 0.4,
+      "sigma": 0.25,
+      "faults": {
+        "malformed": 0.0,
+        "schema_violation": 0.0,
+        "unusable": 0.0,
+        "timeout": 0.0,
+        "die": 0.0
+      },
+      "note": "synthetic; not a measurement of any real model"
+    },
+    "offered_fps": 30.0,
+    "fifo_capacity": 8,
+    "frames_left_in_queue_at_stop": 8,
+    "overload_ratio": 12.0,
+    "health": {
+      "health": "healthy",
+      "seconds_since_publish": 0.00040651699998761615,
+      "admission_policy": "fifo_bounded",
+      "deadline_s": 5.0,
+      "preprocess_total_s": 0.0002788820002024295
+    }
+  }
+}
