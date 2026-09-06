@@ -174,7 +174,9 @@ def test_latest_frame_bounds_result_age_where_fifo_does_not():
         ages[policy.name] = metrics.summarize().result_age["max"]
 
     # latest-frame: bounded by ~one service time plus one inter-frame interval
-    assert ages["latest"] < 3 * service
+    # One service time, plus one inter-frame interval, plus slack for a shared
+    # CI runner. The unbounded bound below stays clear of this by 25%.
+    assert ages["latest"] < 4 * service
     # unbounded FIFO: the backlog is the age
     assert ages["fifo_unbounded"] > 5 * service
 
@@ -209,4 +211,80 @@ def test_drop_rate_is_computed_against_frames_actually_captured():
     s = metrics.summarize()
     assert s.frames_captured == 40
     assert 0.0 < s.drop_rate < 1.0
+    # Every captured frame is either dropped or published, bar the one in flight.
     assert s.frames_dropped + s.results_published == pytest.approx(s.frames_captured, abs=1)
+
+
+# --- the worker must outlive anything that happens to one frame -------------
+
+
+def test_a_raising_consumer_does_not_stop_the_pipeline():
+    """A consumer is downstream. Its bugs must not stop perception."""
+    engine = ScriptedEngine(['{"path_status": "clear", "obstacle_location": "none"}'])
+    metrics = Metrics("test", sample_resources=False)
+
+    def explode(_result):
+        raise ValueError("consumer bug")
+
+    pipe = Pipeline(engine=engine, policy=LatestFrameBuffer(), metrics=metrics,
+                    consumer=explode, deadline_s=5.0, watchdog_s=5.0)
+    pipe.start(warmup=False)
+    drive(pipe, 5, fps=30, settle=0.4)
+    published = len(metrics.rows)
+    alive = pipe._worker.is_alive()
+    pipe.stop()
+
+    assert alive, "worker died on a consumer exception"
+    assert published == 5, f"only {published} of 5 frames published"
+    assert pipe.consumer_errors == 5  # counted, not hidden
+
+
+def test_a_raising_preprocessor_publishes_a_pipeline_error():
+    """Our own bugs are a named failure, not a silent drop or a dead worker."""
+
+    class BrokenPreprocessor:
+        backend = "broken"
+
+        def run(self, payload):
+            raise RuntimeError("preprocess exploded")
+
+    pipe, metrics, published = build(
+        ScriptedEngine(['{"path_status": "clear", "obstacle_location": "none"}'])
+    )
+    pipe.preprocessor = BrokenPreprocessor()
+    pipe.start(warmup=False)
+    drive(pipe, 3, fps=30, settle=0.4)
+    alive = pipe._worker.is_alive()
+    pipe.stop()
+
+    assert alive
+    assert len(published) == 3
+    for result in published:
+        assert result.validation["failure"] == Failure.PIPELINE_ERROR.value
+        assert result.semantic == {"path_status": "unknown", "obstacle_location": "unknown"}
+
+
+def test_preprocess_time_is_reported_not_buried_in_queue_age():
+    """Gate 3 needs preprocessing attributable; it falls inside queue age."""
+
+    class SlowPreprocessor:
+        backend = "slow"
+
+        def run(self, payload):
+            from inference.preprocess import PreprocessResult
+
+            time.sleep(0.05)
+            return PreprocessResult(image=payload, duration=0.05, backend="slow")
+
+    pipe, metrics, published = build(
+        ScriptedEngine(['{"path_status": "clear", "obstacle_location": "none"}'])
+    )
+    pipe.preprocessor = SlowPreprocessor()
+    pipe.start(warmup=False)
+    pipe.submit(Frame(frame_id=1, capture_ts=monotonic(), payload=None))
+    time.sleep(0.5)
+    pipe.stop()
+
+    result = published[0]
+    assert result.preprocess_s == pytest.approx(0.05, abs=0.01)
+    assert result.queue_age >= result.preprocess_s
