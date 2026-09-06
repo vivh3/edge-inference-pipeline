@@ -1,0 +1,259 @@
+{
+  "args": {
+    "fps": 30.0,
+    "latency": 0.4,
+    "sigma": 0.25,
+    "duration": 12.0,
+    "deadline": 5.0,
+    "fifo_capacity": 8,
+    "policies": [
+      "latest",
+      "fifo_bounded",
+      "fifo_unbounded"
+    ],
+    "seed": 0,
+    "p_malformed": 0.0,
+    "p_schema_violation": 0.0,
+    "p_unusable": 0.0,
+    "p_timeout": 0.0
+  },
+  "summaries": {
+    "latest": {
+      "policy": "latest",
+      "duration_s": 12.150598016000004,
+      "frames_captured": 361,
+      "frames_admitted": 361,
+      "frames_dropped": 330,
+      "results_published": 30,
+      "drop_rate": 0.9141274238227147,
+      "invalid_output_rate": 0.0,
+      "extraction_rate": 0.0,
+      "failures": {
+        "none": 30
+      },
+      "capture_fps_measured": 29.964862118949988,
+      "publish_fps_measured": 2.4690142790087997,
+      "queue_age": {
+        "n": 30,
+        "mean": 0.016155299633336048,
+        "p50": 0.016469656999902327,
+        "p90": 0.026872023999999328,
+        "p99": 0.030732865000004495,
+        "max": 0.030732865000004495
+      },
+      "inference_latency": {
+        "n": 30,
+        "mean": 0.4033181093999966,
+        "p50": 0.38031152499991094,
+        "p90": 0.5685255480000251,
+        "p99": 0.8346939600000951,
+        "max": 0.8346939600000951
+      },
+      "post_processing": {
+        "n": 30,
+        "mean": 0.00010967476665276384,
+        "p50": 0.00010005900003307033,
+        "p90": 0.00015551499996036,
+        "p99": 0.00017322300004707358,
+        "max": 0.00017322300004707358
+      },
+      "result_age": {
+        "n": 30,
+        "mean": 0.4195830837999855,
+        "p50": 0.406471571000111,
+        "p90": 0.5698412479999888,
+        "p99": 0.8521201689999316,
+        "max": 0.8521201689999316
+      },
+      "peak_rss_mb": 14.942208,
+      "mean_power_w": 0.0,
+      "clock": "time.monotonic (CLOCK_MONOTONIC)",
+      "wall_clock_start": "2026-08-30T21:15:54.582Z",
+      "notes": {
+        "SIMULATED": "synthetic engine; service time is an input, not a measurement",
+        "engine": {
+          "engine": "mock",
+          "mean_latency_s": 0.4,
+          "sigma": 0.25,
+          "faults": {
+            "malformed": 0.0,
+            "schema_violation": 0.0,
+            "unusable": 0.0,
+            "timeout": 0.0,
+            "die": 0.0
+          },
+          "note": "synthetic; not a measurement of any real model"
+        },
+        "offered_fps": 30.0,
+        "fifo_capacity": null,
+        "frames_left_in_queue_at_stop": 1,
+        "overload_ratio": 12.0,
+        "health": {
+          "health": "healthy",
+          "seconds_since_publish": 0.00041994900004738156,
+          "admission_policy": "latest",
+          "deadline_s": 5.0,
+          "preprocess_total_s": 0.00035957999989477685
+        }
+      }
+    },
+    "fifo_bounded": {
+      "policy": "fifo_bounded",
+      "duration_s": 12.147751733000064,
+      "frames_captured": 360,
+      "frames_admitted": 38,
+      "frames_dropped": 322,
+      "results_published": 30,
+      "drop_rate": 0.8944444444444445,
+      "invalid_output_rate": 0.0,
+      "extraction_rate": 0.0,
+      "failures": {
+        "none": 30
+      },
+      "capture_fps_measured": 29.960083471429655,
+      "publish_fps_measured": 2.4695927822185633,
+      "queue_age": {
+        "n": 30,
+        "mean": 2.7084845527000083,
+        "p50": 3.081665826999938,
+        "p90": 3.3954744800000753,
+        "p99": 3.5244347919999655,
+        "max": 3.5244347919999655
+      },
+      "inference_latency": {
+        "n": 30,
+        "mean": 0.4033274322666557,
+        "p50": 0.38030990499999007,
+        "p90": 0.5686479489999101,
+        "p99": 0.834705400999951,
+        "max": 0.834705400999951
+      },
+      "post_processing": {
+        "n": 30,
+        "mean": 9.259123333246558e-05,
+        "p50": 8.973399997103115e-05,
+        "p90": 0.00010292299998582166,
+        "p99": 0.0001183320000563981,
+        "max": 0.0001183320000563981
+      },
+      "result_age": {
+        "n": 30,
+        "mean": 3.1119045761999966,
+        "p50": 3.5362055750000536,
+        "p90": 3.7437555379999594,
+        "p99": 3.903068894999933,
+        "max": 3.903068894999933
+      },
+      "peak_rss_mb": 15.07328,
+      "mean_power_w": 0.0,
+      "clock": "time.monotonic (CLOCK_MONOTONIC)",
+      "wall_clock_start": "2026-08-30T21:16:06.733Z",
+      "notes": {
+        "SIMULATED": "synthetic engine; service time is an input, not a measurement",
+        "engine": {
+          "engine": "mock",
+          "mean_latency_s": 0.4,
+          "sigma": 0.25,
+          "faults": {
+            "malformed": 0.0,
+            "schema_violation": 0.0,
+            "unusable": 0.0,
+            "timeout": 0.0,
+            "die": 0.0
+          },
+          "note": "synthetic; not a measurement of any real model"
+        },
+        "offered_fps": 30.0,
+        "fifo_capacity": 8,
+        "frames_left_in_queue_at_stop": 8,
+        "overload_ratio": 12.0,
+        "health": {
+          "health": "healthy",
+          "seconds_since_publish": 0.00040651699998761615,
+          "admission_policy": "fifo_bounded",
+          "deadline_s": 5.0,
+          "preprocess_total_s": 0.0002788820002024295
+        }
+      }
+    },
+    "fifo_unbounded": {
+      "policy": "fifo_unbounded",
+      "duration_s": 12.148907652000048,
+      "frames_captured": 361,
+      "frames_admitted": 361,
+      "frames_dropped": 0,
+      "results_published": 30,
+      "drop_rate": 0.0,
+      "invalid_output_rate": 0.0,
+      "extraction_rate": 0.0,
+      "failures": {
+        "none": 30
+      },
+      "capture_fps_measured": 29.964781064376268,
+      "publish_fps_measured": 2.4693578105403713,
+      "queue_age": {
+        "n": 30,
+        "mean": 5.531889634033333,
+        "p50": 5.231251397999927,
+        "p90": 9.584382092999931,
+        "p99": 10.778076516000056,
+        "max": 10.778076516000056
+      },
+      "inference_latency": {
+        "n": 30,
+        "mean": 0.40333479383334636,
+        "p50": 0.38029516200003854,
+        "p90": 0.5685584130000052,
+        "p99": 0.8347701349999852,
+        "max": 0.8347701349999852
+      },
+      "post_processing": {
+        "n": 30,
+        "mean": 0.00010459446665815146,
+        "p50": 0.00010259600003337255,
+        "p90": 0.00011972700008300308,
+        "p99": 0.00014610599998832186,
+        "max": 0.00014610599998832186
+      },
+      "result_age": {
+        "n": 30,
+        "mean": 5.935329022333337,
+        "p50": 5.861448414999927,
+        "p90": 10.070286152999984,
+        "p99": 11.133029839000073,
+        "max": 11.133029839000073
+      },
+      "peak_rss_mb": 15.183872,
+      "mean_power_w": 0.0,
+      "clock": "time.monotonic (CLOCK_MONOTONIC)",
+      "wall_clock_start": "2026-08-30T21:16:18.882Z",
+      "notes": {
+        "SIMULATED": "synthetic engine; service time is an input, not a measurement",
+        "engine": {
+          "engine": "mock",
+          "mean_latency_s": 0.4,
+          "sigma": 0.25,
+          "faults": {
+            "malformed": 0.0,
+            "schema_violation": 0.0,
+            "unusable": 0.0,
+            "timeout": 0.0,
+            "die": 0.0
+          },
+          "note": "synthetic; not a measurement of any real model"
+        },
+        "offered_fps": 30.0,
+        "fifo_capacity": null,
+        "frames_left_in_queue_at_stop": 331,
+        "overload_ratio": 12.0,
+        "health": {
+          "health": "healthy",
+          "seconds_since_publish": 0.0004226859999789667,
+          "admission_policy": "fifo_unbounded",
+          "deadline_s": 5.0,
+          "preprocess_total_s": 0.0002777090001018223
+        }
+      }
+    }
+  }
+}
