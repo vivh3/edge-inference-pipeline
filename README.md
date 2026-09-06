@@ -106,9 +106,9 @@ policy:
 
 | policy | captured | published | drop rate | result age p50 | p99 | max |
 |---|---|---|---|---|---|---|
-| `latest` | 361 | 30 | 91.4% | **0.406 s** | 0.852 s | 0.852 s |
-| `fifo_bounded(8)` | 360 | 30 | 89.4% | 3.536 s | 3.903 s | 3.903 s |
-| `fifo_unbounded` | 361 | 30 | 0.0% | 5.861 s | 11.133 s | 11.133 s |
+| `latest` | 361 | 30 | 91.4% | **0.405 s** | 0.849 s | 0.849 s |
+| `fifo_bounded(8)` | 361 | 30 | 89.5% | 3.532 s | 3.901 s | 3.901 s |
+| `fifo_unbounded` | 361 | 30 | 0.0% | 5.858 s | 11.127 s | 11.127 s |
 
 > **`SIMULATED`.** The service time is an input to this experiment, not a measurement
 > of any model. These runs show admission-policy behaviour only. They live in
@@ -117,10 +117,16 @@ policy:
 
 Reproduce: `python3 tools/run_overload_sim.py --duration 12 --latency 0.4`
 
+Every captured frame is accounted for: `dropped + published + still queued at stop`
+equals `captured` exactly, for all three policies. The summaries carry the queue depth
+at stop so you can check it.
+
 Under `latest`, result age sits at roughly one inference service time. Under
-`fifo_bounded(8)` it saturates near `capacity x service time`, and the frames that
-survive are the oldest ones — backwards for this workload. Under `fifo_unbounded` it
-grows for as long as the run continues.
+`fifo_bounded(8)` it saturates near `(capacity + 1) x service time` — a frame admitted to
+a full queue waits behind eight others, then pays for its own inference — and the frames
+that survive are the oldest ones, backwards for this workload. The tail runs past that
+figure because service time is variable, not because the queue grew. Under
+`fifo_unbounded` it grows for as long as the run continues.
 
 **Precision about the claim.** "Result age grows without bound" holds only for the
 *unbounded* FIFO. A bounded FIFO fills and starts dropping, so its age is capped by
@@ -157,7 +163,8 @@ The wrapper validates that, then attaches trusted metadata:
   "wall_clock": "2026-08-29T14:20:00.123Z",
   "semantic": { "path_status": "blocked", "obstacle_location": "front_left" },
   "validation": { "ok": true, "failure": "none", "extracted": false,
-                  "extra_keys_stripped": [] }
+                  "extra_keys_stripped": [] },
+  "preprocess_s": 0.004
 }
 ```
 
@@ -188,6 +195,7 @@ A deliverable, not an afterthought. Five failure modes, each a published outcome
 | `unusable_semantics` | legal values that contradict each other (`blocked` with no location, `clear` with a location, `unknown` with a location) |
 | `inference_timeout` | exceeded the per-frame deadline |
 | `engine_error` | the engine raised, OOMed, or died |
+| `pipeline_error` | a stage around the engine raised — our bug, not the model's |
 
 On any failure the pipeline still publishes a record, with semantics set to the
 explicit unknown state and a `validation` block naming the cause. The consumer always
@@ -206,9 +214,15 @@ One documented exception that is not a retry: JSON wrapped in prose or a
 is still invoked once, and the rate at which extraction was *needed* is reported, so
 a prompt that fails to hold format stays visible.
 
-A watchdog reports a `stalled` health state when nothing publishes within its
-interval. It reports; it does not restart. Restart is out of scope and would hide the
-failures this project exists to expose.
+The worker survives anything that happens to one frame. A consumer that raises is
+isolated and counted, and a crash in our own preprocessing or validation publishes a
+`pipeline_error` record rather than killing the thread — a pipeline claiming "every
+admitted frame produces a published record" cannot die silently on the first unexpected
+exception.
+
+A watchdog reports a `stalled` health state when nothing publishes within its interval.
+It reports; it does not restart. Restart is out of scope and would hide the failures this
+project exists to expose.
 
 | measured on hardware | value |
 |---|---|
@@ -224,17 +238,23 @@ All from one monotonic clock, reported separately:
 
 | metric | definition | what it tells you |
 |---|---|---|
-| queue age | `inference_start_ts - capture_ts` | how long a frame waited to be admitted — where the admission policy shows up |
+| queue age | `inference_start_ts - capture_ts` | waiting to be admitted, plus this frame's preprocessing — where the admission policy shows up |
+| preprocess | `preprocess_s` | broken out of queue age so it stays attributable |
 | inference latency | `inference_end_ts - inference_start_ts` | model execution alone |
 | post-processing | `publish_ts - inference_end_ts` | validation, serialisation, publish |
 | **result age** | `publish_ts - capture_ts` | **primary**: what a consumer actually experiences |
 
-The decomposition is exact by construction and asserted in the tests. Post-processing
-is kept separate so "the bottleneck was JSON parsing, not the model" can be a
-conclusion the data supports.
+The decomposition is exact by construction and asserted in the tests. Preprocessing runs
+before the engine stamps its start, so it falls inside queue age; it is reported
+separately rather than lost there, because Gate 3 has to be able to blame it.
+Post-processing is kept separate for the same reason — so "the bottleneck was JSON
+parsing, not the model" can be a conclusion the data supports.
 
-Queue *depth* is not reported: in a correct one-slot latest-value buffer it is 0 or 1
-and carries no information.
+Two counts are deliberately absent. **Frames admitted**: under latest-frame a frame can
+be admitted and then evicted before it runs, so the count means different things per
+policy and is not comparable across the policies being compared. Captured, dropped and
+published are unambiguous. **Queue depth**: in a correct one-slot buffer it is 0 or 1 and
+carries no information.
 
 ---
 

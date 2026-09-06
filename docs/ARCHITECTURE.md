@@ -84,7 +84,7 @@ so an experiment can swap between them with nothing else changing:
 | policy | on overload | result age | drop rate |
 |---|---|---|---|
 | `latest` | newest frame evicts the pending one | ~ one service time | high, and rising with overload ratio |
-| `fifo_bounded(n)` | tail-drop: the incoming frame is refused | saturates near `n x service time` | high |
+| `fifo_bounded(n)` | tail-drop: the incoming frame is refused | saturates near `(n + 1) x service time` | high |
 | `fifo_unbounded` | never drops | grows without bound | zero |
 
 `latest` is the design choice. The argument: for this workload a stale frame
@@ -120,6 +120,11 @@ Three threads, no shared mutable state outside two locks:
   reports; it does not restart. Automatic restart is out of scope and would
   obscure exactly the failures this project exists to make visible.
 
+The worker outlives anything that happens to one frame: a raising consumer is
+isolated and counted, and a crash in our own stages publishes a
+`pipeline_error` record. A worker that died on the first unexpected exception
+would be the same silent failure the output contract exists to rule out.
+
 If capture and inference shared a thread, the camera driver's own buffering
 would become the queue, and the admission policy would have nothing left to
 decide. The thread boundary is what gives the policy something to be a policy
@@ -132,16 +137,19 @@ four timestamps on every published record:
 
 | metric | definition | what it tells you |
 |---|---|---|
-| queue age | `inference_start_ts - capture_ts` | how long a frame waited to be admitted -- where the admission policy shows up |
+| queue age | `inference_start_ts - capture_ts` | waiting, plus this frame's preprocessing -- where the admission policy shows up |
+| preprocess | `preprocess_s` | broken out of queue age so it stays attributable |
 | inference latency | `inference_end_ts - inference_start_ts` | model execution alone; should be roughly invariant to the admission policy |
 | post-processing | `publish_ts - inference_end_ts` | validation, serialisation, publish |
 | **result age** | `publish_ts - capture_ts` | **primary**: the only one a downstream consumer experiences |
 
 The decomposition is exact by construction:
 `result_age == queue_age + inference_latency + post_processing`, asserted in
-`tests/test_pipeline.py`. Keeping post-processing separate is what makes
-"the bottleneck was JSON parsing, not the model" a conclusion the data can
-support rather than one that has to be assumed away.
+`tests/test_pipeline.py`. Preprocessing runs before the engine stamps its
+start, so it sits inside queue age and is reported separately rather than
+lost there. Keeping it and post-processing separate is what makes "the
+bottleneck was JSON parsing, not the model" a conclusion the data can support
+rather than one that has to be assumed away.
 
 ## Failure handling
 
@@ -155,6 +163,7 @@ Five failure modes, each a first-class published outcome
 | `unusable_semantics` | individually legal values that contradict each other (`blocked` with no location, `clear` with a location, `unknown` with a location) |
 | `inference_timeout` | exceeded the per-frame deadline |
 | `engine_error` | the engine raised, OOMed, or died |
+| `pipeline_error` | a stage around the engine raised -- our bug, not the model's |
 
 On any failure the pipeline **still publishes a record**, with semantics set
 to the explicit unknown state and a trusted `validation` block naming the
