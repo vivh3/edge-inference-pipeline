@@ -21,34 +21,146 @@ Work top to bottom. Steps 1–5 are setup, 6–10 are the milestone. Record ever
 
 ## 0. What you need on the desk
 
+The box contains the carrier board with the Orin Nano module and its
+heatsink/fan already fitted, and a power adapter. **It does not contain a
+microSD card, a DisplayPort cable, or a keyboard.** Gather these before you
+start:
+
 | item | note |
 |---|---|
-| Orin Nano Super Dev Kit + its power supply | Use the supplied adapter. An underpowered USB-C brick causes brownouts that look like random kernel panics. |
-| microSD, 64 GB, U3/A2 | Slower cards make every step painful. |
-| **DisplayPort** cable and a monitor | The dev kit has DisplayPort, **not HDMI**. A passive HDMI adapter usually will not work. This catches almost everyone. |
-| USB keyboard and mouse | For first boot only. |
-| Ethernet | Simpler than wifi for the first hour. |
-| USB webcam (UVC) | Any boring one. Avoid CSI cameras: they add driver and GStreamer work that contributes nothing here. |
+| The dev kit + **its own** power supply | Use the adapter that came in the box. An underpowered supply causes brownouts that look like random kernel panics, and you will chase it for hours. |
+| microSD, **64 GB minimum**, U3 / A2 speed class | The image is around 20 GB. A slow card makes every later step painful. |
+| **DisplayPort** cable + monitor | The board has DisplayPort, **not HDMI**. See the warning below. |
+| USB keyboard and mouse | First boot only; you can SSH after that. |
+| Ethernet cable | Simpler than wifi for the first hour. |
+| A laptop with an SD card reader | To write the image. |
+| USB webcam (UVC) | Plug it in *after* first boot. Avoid CSI cameras — they add driver and GStreamer work that contributes nothing to this project. |
 
-Headless is possible over the USB-C serial console, but for a first bring-up a
-monitor removes a whole class of confusion.
+### The HDMI trap, stated once and loudly
+
+**The display output is DisplayPort. A passive HDMI-to-DisplayPort adapter
+will not work.** DisplayPort sources do not drive HDMI passively; you need
+either a real DisplayPort cable into a DisplayPort monitor, or an *active*
+DP-to-HDMI adapter (one that says "active", usually with its own chip).
+
+This is the single most common first-hour failure, and it presents as a board
+that appears completely dead — no picture, no signal, nothing. Buy the right
+cable before the board arrives.
+
+### How to identify each port by shape
+
+You will not need to hunt for a label if you know what you're looking at:
+
+| port | what it looks like |
+|---|---|
+| **DC power** | Round barrel socket, roughly 5.5 mm across. Only round socket on the board. |
+| **DisplayPort** | Similar size to HDMI, but one corner is cut at an angle instead of both. Usually has a small latch that clicks. |
+| **USB-A** (×4) | Standard rectangular USB. The plastic tongue inside is blue — that means USB 3. |
+| **USB-C** | Small oval. Used for flashing and the serial console, *not* for power. |
+| **Ethernet** | Wide telephone-style jack with a clip. |
+| **microSD** | A thin slot. **It is on the underside of the module**, not on the carrier board — see step 1. |
+| **40-pin header** | Two rows of 20 pins. You will not use it. |
+
+### Before you touch the board
+
+The module and carrier board are exposed electronics. Touch something metal
+and grounded first — a radiator, a desktop PC case — to discharge static.
+Avoid working on carpet in socks. Hold the board by its edges and do not touch
+the gold contacts.
+
+The heatsink and fan are already fitted. **Do not power the board with the
+heatsink removed**, even briefly.
 
 ---
 
-## 1. Flash JetPack
+## 1. Flash the SD card, then plug in
 
-Download the **Jetson Orin Nano Developer Kit SD card image** for JetPack 6.x
-from NVIDIA, then write it with Balena Etcher or `dd`. Insert, connect
-DisplayPort, keyboard, ethernet, then power.
+Do the card first, on your laptop, before anything is connected. A board with
+an unwritten card looks identical to a broken board.
 
-First boot walks through the usual Ubuntu setup: language, user, timezone. It
-reboots once or twice on its own.
+### 1a. Write the image
+
+1. On NVIDIA's Jetson download page, get the **Jetson Orin Nano Developer Kit
+   SD card image** for JetPack 6.x. It is a several-gigabyte `.img` or
+   compressed archive.
+2. Install [Balena Etcher](https://etcher.balena.io/) — it is the least
+   error-prone option and works the same on macOS, Windows and Linux.
+3. Insert the microSD into your laptop. Etcher: select the image, select the
+   card, flash. **Expect 10–25 minutes.** Let it finish its verify pass.
+4. Your operating system may pop up "this disk is unreadable, do you want to
+   format it?" when the card is ejected. **Say no / ignore.** The card is
+   written in a Linux format your laptop cannot read; this is normal.
+
+### 1b. Insert the card
+
+The microSD slot is **on the underside of the Orin Nano module itself**, not on
+the carrier board. Look at the module — the smaller board sitting in a socket
+on the larger one — and find the thin slot underneath its edge. You may need to
+tilt the board to see it.
+
+Push the card in, contacts facing the module, until it **clicks**. It is a
+push-to-eject socket: it should stay in on its own. If it springs back out, it
+was not seated.
+
+### 1c. Connect everything, power LAST
+
+Order matters. Connecting displays and peripherals to a live board is how you
+get a board that boots into a confused state.
+
+1. **DisplayPort cable** → board, other end → monitor. Switch the monitor to
+   that input now.
+2. **Keyboard and mouse** → any two USB-A ports.
+3. **Ethernet** → board, other end → your router or switch.
+4. **Leave the webcam unplugged** for now. One variable at a time.
+5. **Power, last:** plug the barrel connector into the board first, *then* the
+   adapter into the wall.
+
+The dev kit **powers on automatically when DC is applied** — there is no power
+switch to press. Within a second or two you should see an indicator LED near
+the power jack.
+
+### 1d. What you should see, and when
+
+| time | expected |
+|---|---|
+| immediately | Power LED on; fan may spin briefly then stop |
+| 5–20 s | NVIDIA logo on the monitor |
+| 30–60 s | Ubuntu first-boot configuration wizard |
+
+First boot is slower than later ones. **Give it a full two minutes before
+concluding anything is wrong.**
+
+### 1e. The first-boot wizard
+
+It is standard Ubuntu OEM setup:
+
+1. Accept the NVIDIA software licence.
+2. Language, keyboard layout, timezone.
+3. **Create your user.** Write the username and password down — you will need
+   them for `sudo` constantly, and there is no recovery path that isn't
+   annoying.
+4. If asked about **APP partition size**, accept the maximum offered. You want
+   the space.
+5. It reboots once, possibly twice, on its own. Let it.
+
+Then log in, connect to the network if you used wifi, and bring the system up
+to date:
 
 ```bash
-cat /etc/nv_tegra_release        # L4T version
-lsb_release -a                   # Ubuntu 22.04 on JetPack 6
-python3 --version                # 3.10, which matches this repo's floor
-free -h                          # confirm ~8 GB total
+sudo apt update && sudo apt upgrade -y
+sudo reboot
+```
+
+That upgrade can take 10–20 minutes on a fresh image. Let it finish.
+
+### 1f. Confirm you are where you think you are
+
+```bash
+cat /etc/nv_tegra_release    # L4T version
+lsb_release -a               # Ubuntu 22.04 on JetPack 6
+python3 --version            # 3.10, which matches this repo's floor
+free -h                      # confirm roughly 8 GB total
+nvidia-smi                   # may not exist on Jetson; jtop is the tool here
 ```
 
 - JetPack / L4T version: `TBD`
@@ -57,9 +169,28 @@ free -h                          # confirm ~8 GB total
 move the root filesystem onto it unless it is trivial — boot configuration is
 not part of this project.
 
-**If you have a Super dev kit and the Super power modes are missing**, the
-firmware may need updating before `nvpmodel` offers them. Check NVIDIA's release
-notes for your JetPack version.
+### 1g. If nothing happens
+
+Work down this list in order. Each row is a real, common cause.
+
+| symptom | most likely cause | what to do |
+|---|---|---|
+| No LED at all | Supply not seated, or dead outlet | Reseat the barrel jack; try another outlet; confirm you used the supplied adapter |
+| LED on, no picture, monitor says "no signal" | **Passive HDMI adapter** | Use a real DisplayPort cable, or an *active* adapter |
+| LED on, no picture, real DP cable | Monitor on the wrong input, or did not detect | Cycle the monitor's input select; power-cycle the monitor with the board running |
+| LED on, fan spins, no picture after 2 min | SD card not written, or not seated | Reseat until it clicks; rewrite with Etcher and let it verify |
+| NVIDIA logo then black screen | Desktop failed, system is alive | Press `Ctrl+Alt+F2` for a text console and log in there |
+| Boots, then freezes or reboots at random | Underpowered supply | Use the adapter from the box, not a generic USB-C brick |
+| Fan never spins even under load | Normal at idle | It ramps under load; confirm later with `jtop` |
+
+If it boots to a text console and you can log in, the board is fine and you
+have a display problem, not a hardware problem. Keep going over SSH:
+
+```bash
+ip addr                      # find the board's address on your network
+# then from your laptop:
+ssh <your-user>@<that-address>
+```
 
 ---
 
@@ -310,13 +441,15 @@ or 4B. The architecture is the deliverable; the parameter count is not.
 
 ## Common failures, and what they actually are
 
+Boot and display problems are in step 1g. These are the ones that bite later.
+
 | symptom | cause |
 |---|---|
-| No display at boot | HDMI adapter. The board needs DisplayPort. |
-| Random freezes or reboots under load | Underpowered supply. Use the one in the box. |
 | `torch.cuda.is_available()` is `False` | PyPI wheel instead of NVIDIA's Jetson build. See step 7. |
 | Inference 10–50x slower than expected | Same cause. You are running on the CPU. |
 | Killed mid-inference, no traceback | Out of memory. The OOM killer is silent. Watch `jtop` during a run. |
 | Camera stuck around 10 fps | YUYV instead of MJPG, or low light lengthening exposure. |
+| Camera not in `/dev/` at all | Some webcams need a moment after plugging in. Re-run `v4l2-ctl --list-devices`. |
 | `jtop` says "service not running" | Needs `systemctl restart jtop.service` and a re-login. |
 | Power rails list is empty | Path layout differs on your JetPack. Note it, use `jtop`, do not report zeros. |
+| Everything slows down after ~10 minutes | Thermal throttling. Expected, and exactly what the sustained load test in Gate 3 exists to catch. |
