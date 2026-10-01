@@ -1,0 +1,31 @@
+{
+  "source": "/dev/video0 640x480 MJPG",
+  "clock": "time.monotonic (CLOCK_MONOTONIC)",
+  "wall_clock_start": "2026-10-01T11:57:03.478Z",
+  "requested_fps": 30.0,
+  "negotiated": {
+    "width": 640,
+    "height": 480,
+    "fps": 30.0,
+    "fourcc": "MJPG",
+    "backend": "V4L2",
+    "buffer_frames": 2
+  },
+  "sample_seconds": 28.474,
+  "frames": 856,
+  "effective_fps": 30.027,
+  "interval_s": {
+    "mean": 0.0333,
+    "min": 0.0168,
+    "p50": 0.03205,
+    "p90": 0.036,
+    "p99": 0.03656,
+    "max": 0.03931
+  },
+  "long_gaps": {
+    "basis": "1.5x the measured median interval",
+    "threshold_s": 0.04807,
+    "count": 0,
+    "fraction": 0.0
+  }
+}
