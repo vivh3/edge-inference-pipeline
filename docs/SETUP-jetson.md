@@ -204,6 +204,25 @@ v4l2-ctl --list-devices
 v4l2-ctl -d /dev/video0 --list-formats-ext
 ```
 
+Plug the camera into a port on the Jetson itself, not a hub. A hub shares
+bandwidth across everything on it, and the result arrives as dropped and late
+frames in section 6 — where the whole point is to find out what the camera
+delivers, not what the hub allows.
+
+Read `--list-formats-ext` for the format that sustains 30 fps at a size at or
+above the model's input resolution. On the camera used here (j5 JVCU100) that
+is **MJPG at 640x480**: YUYV is offered only at 1024x576 and above, and only at
+20 fps or less, so uncompressed capture cannot reach 30 fps at any useful size.
+
+- Camera: `TBD`
+- Format selected: `TBD`
+
+MJPG costs a JPEG decode per frame. That decode lands in preprocessing, where
+it is measured, rather than disappearing into the queue wait. The Orin has
+hardware JPEG decoders that OpenCV's `VideoCapture` does not use, which makes
+this a candidate for the section 11 bottleneck investigation — note it and
+move on.
+
 Look at the formats. **MJPG usually reaches higher frame rates than YUYV** at
 the same resolution, because YUYV is uncompressed and saturates USB bandwidth.
 If 640x480 YUYV tops out at 10 fps, that is your camera, not your code.
