@@ -42,6 +42,9 @@ def main() -> int:
     p.add_argument("--width", type=int, default=640)
     p.add_argument("--height", type=int, default=480)
     p.add_argument("--fps-hint", type=float, default=30.0, help="requested, not guaranteed")
+    p.add_argument("--backend", default="v4l2", choices=["v4l2", "gstreamer", "any"],
+                   help="JetPack's OpenCV prefers GStreamer, which ignores the "
+                        "pixel format request. v4l2 talks to a UVC camera directly.")
     p.add_argument("--fourcc", default="MJPG",
                    help="pixel format to request; MJPG is what most UVC cameras "
                         "sustain at 30 fps. Empty string leaves it to the driver.")
@@ -53,7 +56,8 @@ def main() -> int:
         source = SyntheticCamera(fps=args.fps_hint)
         label = f"synthetic @ {args.fps_hint:g} fps"
     else:
-        source = WebcamSource(args.device, args.width, args.height, args.fps_hint, args.fourcc)
+        source = WebcamSource(args.device, args.width, args.height, args.fps_hint,
+                              args.fourcc, args.backend)
         label = f"/dev/video{args.device} {args.width}x{args.height} {args.fourcc or 'driver default'}"
 
     stamps = []
@@ -122,7 +126,8 @@ def main() -> int:
     print(f"  effective fps       {report['effective_fps']}  (requested {args.fps_hint:g})")
     if report["negotiated"]:
         n = report["negotiated"]
-        print(f"  negotiated format   {n['fourcc']} {n['width']}x{n['height']} @ {n['fps']:g} fps")
+        print(f"  negotiated format   {n['fourcc']} {n['width']}x{n['height']} "
+              f"@ {n['fps']:g} fps via {n['backend']}")
     print(f"  interval p50 / p99  {iv['p50'] * 1000:.1f} ms / {iv['p99'] * 1000:.1f} ms")
     print(f"  interval min / max  {iv['min'] * 1000:.1f} ms / {iv['max'] * 1000:.1f} ms")
     print(f"  long gaps           {report['long_gaps']['count']} "

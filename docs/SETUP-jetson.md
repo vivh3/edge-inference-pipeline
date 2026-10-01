@@ -217,6 +217,12 @@ is **MJPG at 640x480**: YUYV is offered only at 1024x576 and above, and only at
 - Camera: `TBD`
 - Format selected: `TBD`
 
+JetPack ships an OpenCV built with GStreamer, and OpenCV prefers it. GStreamer
+does not honour the pixel format request — it logs `unhandled property` and may
+fail to start a pipeline at all. The capture code names the V4L2 backend
+explicitly for that reason. If `measure_camera.py` prints GStreamer warnings,
+that is what is happening; `--backend v4l2` is already the default.
+
 MJPG costs a JPEG decode per frame. That decode lands in preprocessing, where
 it is measured, rather than disappearing into the queue wait. The Orin has
 hardware JPEG decoders that OpenCV's `VideoCapture` does not use, which makes

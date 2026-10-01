@@ -101,12 +101,18 @@ class WebcamSource(_BaseSource):
     reported, because a cheap USB camera will not hold a steady 30 fps and
     drop rate must be computed against frames that actually arrived.
 
-    The pixel format is requested explicitly. OpenCV's V4L2 backend defaults
-    to uncompressed YUYV, and USB 2.0 bandwidth limits most webcams to a few
-    frames per second that way -- some offer no YUYV mode at the requested
-    size at all. MJPG is what a UVC camera will actually sustain at 30 fps.
-    The cost is a JPEG decode per frame, which lands in preprocessing and is
-    measured there rather than being hidden.
+    The pixel format is requested explicitly. OpenCV defaults to uncompressed
+    YUYV, and USB 2.0 bandwidth limits most webcams to a few frames per second
+    that way -- some offer no YUYV mode at the requested size at all. MJPG is
+    what a UVC camera will actually sustain at 30 fps. The cost is a JPEG
+    decode per frame, which lands in preprocessing and is measured there
+    rather than being hidden.
+
+    The capture backend is named explicitly too. JetPack ships an OpenCV built
+    with GStreamer and prefers it, and GStreamer does not honour the pixel
+    format request -- it reports the property as unhandled and, on the camera
+    used here, fails to start a pipeline at all. V4L2 is the backend that
+    talks to a UVC webcam directly and accepts the format.
     """
 
     def __init__(
@@ -116,6 +122,7 @@ class WebcamSource(_BaseSource):
         height: int = 480,
         fps_hint: float = 30.0,
         fourcc: str = "MJPG",
+        backend: str = "v4l2",
     ) -> None:
         super().__init__()
         self.device = device
@@ -123,6 +130,7 @@ class WebcamSource(_BaseSource):
         self.height = height
         self.fps_hint = fps_hint
         self.fourcc = fourcc
+        self.backend = backend
         # What the driver settled on, filled in by open(). Recorded in run
         # notes, because the requested format is a claim and this is the fact.
         self.negotiated: Optional[dict] = None
@@ -131,7 +139,9 @@ class WebcamSource(_BaseSource):
     def open(self) -> None:
         import cv2  # type: ignore
 
-        cap = cv2.VideoCapture(self.device)
+        api = {"v4l2": "CAP_V4L2", "gstreamer": "CAP_GSTREAMER", "any": "CAP_ANY"}
+        preference = getattr(cv2, api.get(self.backend, "CAP_ANY"), 0)
+        cap = cv2.VideoCapture(self.device, preference)
         # Pixel format first. The backend resolves resolution and frame rate
         # within the chosen format, so setting it afterwards can renegotiate
         # the size that was just requested.
@@ -148,7 +158,11 @@ class WebcamSource(_BaseSource):
         except Exception:
             pass
         if not cap.isOpened():
-            raise RuntimeError(f"could not open video device {self.device}")
+            raise RuntimeError(
+                f"could not open video device {self.device} via the "
+                f"{self.backend} backend. Check `v4l2-ctl --list-devices`, and "
+                f"that nothing else holds the device."
+            )
         self._cap = cap
         self.negotiated = self._read_back(cv2, cap)
 
@@ -162,6 +176,7 @@ class WebcamSource(_BaseSource):
             "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0),
             "fps": float(cap.get(cv2.CAP_PROP_FPS) or 0.0),
             "fourcc": fourcc.strip("\x00 ") or None,
+            "backend": getattr(cap, "getBackendName", lambda: None)(),
         }
 
     def _run(self, sink) -> None:
