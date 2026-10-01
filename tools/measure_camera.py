@@ -42,6 +42,9 @@ def main() -> int:
     p.add_argument("--width", type=int, default=640)
     p.add_argument("--height", type=int, default=480)
     p.add_argument("--fps-hint", type=float, default=30.0, help="requested, not guaranteed")
+    p.add_argument("--fourcc", default="MJPG",
+                   help="pixel format to request; MJPG is what most UVC cameras "
+                        "sustain at 30 fps. Empty string leaves it to the driver.")
     p.add_argument("--synthetic", action="store_true", help="fake source, to test this script")
     p.add_argument("--out", default=os.path.join(OUT, "camera.json"))
     args = p.parse_args()
@@ -50,8 +53,8 @@ def main() -> int:
         source = SyntheticCamera(fps=args.fps_hint)
         label = f"synthetic @ {args.fps_hint:g} fps"
     else:
-        source = WebcamSource(args.device, args.width, args.height, args.fps_hint)
-        label = f"/dev/video{args.device} {args.width}x{args.height}"
+        source = WebcamSource(args.device, args.width, args.height, args.fps_hint, args.fourcc)
+        label = f"/dev/video{args.device} {args.width}x{args.height} {args.fourcc or 'driver default'}"
 
     stamps = []
     lock = threading.Lock()
@@ -87,6 +90,9 @@ def main() -> int:
         "clock": CLOCK_NAME,
         "wall_clock_start": started,
         "requested_fps": args.fps_hint,
+        # What the driver agreed to, read back after opening. The request
+        # above is a claim; this is what the camera is actually doing.
+        "negotiated": getattr(source, "negotiated", None),
         "sample_seconds": round(span, 3),
         "frames": len(stamps),
         "effective_fps": round(len(intervals) / span, 3) if span > 0 else 0.0,
@@ -114,6 +120,9 @@ def main() -> int:
     print()
     print(f"  frames captured     {report['frames']} over {report['sample_seconds']}s")
     print(f"  effective fps       {report['effective_fps']}  (requested {args.fps_hint:g})")
+    if report["negotiated"]:
+        n = report["negotiated"]
+        print(f"  negotiated format   {n['fourcc']} {n['width']}x{n['height']} @ {n['fps']:g} fps")
     print(f"  interval p50 / p99  {iv['p50'] * 1000:.1f} ms / {iv['p99'] * 1000:.1f} ms")
     print(f"  interval min / max  {iv['min'] * 1000:.1f} ms / {iv['max'] * 1000:.1f} ms")
     print(f"  long gaps           {report['long_gaps']['count']} "
