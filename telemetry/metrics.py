@@ -144,47 +144,75 @@ def read_rss_bytes() -> int:
     return 0
 
 
-# INA3221 exposes per-rail channels alongside an aggregate. Summing all of
-# them double-counts the total against its own constituents, so aggregates are
-# skipped by label.
-_AGGREGATE_RAIL = ("total", "sum", "all")
-_POWER_GLOB = "/sys/bus/i2c/drivers/ina3221*/*/hwmon/hwmon*/power*_input"
+# The Jetson's INA3221 monitor is exposed through hwmon, which reports bus
+# voltage (mV) and current (mA) on separate channels and leaves the
+# multiplication to the caller. There is no power channel to read.
+_HWMON_ROOT = "/sys/class/hwmon"
+_INA3221_NAME = "ina3221"
+
+# The rails are nested, not disjoint. On an Orin Nano the channels are
+# VDD_IN, VDD_CPU_GPU_CV and VDD_SOC, and the latter two are measured
+# downstream of the first. Summing all three counts the same current twice;
+# summing only the children misses everything on the board that is neither,
+# which at idle is 2.5 W reported against an actual 4.4 W. So when an input
+# rail is present it is reported alone, and the sum is only a fallback for
+# boards that do not expose one.
+_INPUT_RAIL_LABELS = ("vdd_in", "vdd_sys", "pom_5v_in")
 
 
-def _power_rails() -> List[Tuple[str, float]]:
-    """(label, watts) per Jetson power rail, aggregates excluded. Empty off-target."""
+def _read_text(path: str) -> Optional[str]:
+    try:
+        with open(path) as fh:
+            return fh.read().strip()
+    except OSError:
+        return None
+
+
+def _read_int(path: str) -> Optional[int]:
+    try:
+        return int(_read_text(path))
+    except (TypeError, ValueError):
+        return None
+
+
+def _power_rails(root: str = _HWMON_ROOT) -> List[Tuple[str, float]]:
+    """(label, watts) per INA3221 channel. Empty off-target."""
     import glob
-    import os
 
     rails = []
-    for path in sorted(glob.glob(_POWER_GLOB)):
-        label_path = path.replace("_input", "_label")
-        try:
-            with open(path) as fh:
-                watts = int(fh.read().strip()) / 1000.0
-        except (OSError, ValueError):
+    for hwmon in sorted(glob.glob(os.path.join(root, "hwmon*"))):
+        if _read_text(os.path.join(hwmon, "name")) != _INA3221_NAME:
             continue
-        label = ""
-        if os.path.exists(label_path):
-            try:
-                with open(label_path) as fh:
-                    label = fh.read().strip()
-            except OSError:
-                pass
-        if any(word in label.lower() for word in _AGGREGATE_RAIL):
-            continue
-        rails.append((label or os.path.basename(path), watts))
+        for label_path in sorted(glob.glob(os.path.join(hwmon, "in*_label"))):
+            channel = os.path.basename(label_path)[len("in") : -len("_label")]
+            millivolts = _read_int(os.path.join(hwmon, "in%s_input" % channel))
+            milliamps = _read_int(os.path.join(hwmon, "curr%s_input" % channel))
+            if millivolts is None or milliamps is None:
+                # e.g. "sum of shunt voltages", a voltage channel with no
+                # current channel. Not a rail, so not a power reading.
+                continue
+            label = _read_text(label_path) or os.path.basename(label_path)
+            rails.append((label, millivolts * milliamps / 1_000_000.0))
+    return rails
+
+
+def _reported_rails(root: str = _HWMON_ROOT) -> List[Tuple[str, float]]:
+    """The rails that make up the reported figure: the input rail, or all."""
+    rails = _power_rails(root)
+    for rail in rails:
+        if rail[0].lower() in _INPUT_RAIL_LABELS:
+            return [rail]
     return rails
 
 
 def read_jetson_power_w() -> float:
-    """Module power in watts, summed over the non-aggregate rails. 0.0 off-target."""
-    return sum(watts for _, watts in _power_rails())
+    """Total module power in watts. 0.0 off-target."""
+    return sum(watts for _, watts in _reported_rails())
 
 
 def jetson_power_rail_names() -> List[str]:
-    """Labels of the rails being summed. Recorded once in the run notes."""
-    return [label for label, _ in _power_rails()]
+    """Labels of the rails behind the figure. Recorded once in the run notes."""
+    return [label for label, _ in _reported_rails()]
 
 
 # --------------------------------------------------------------------------
