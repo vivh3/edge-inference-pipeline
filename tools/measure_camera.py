@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Measure what the camera actually delivers, not what it claims.
 
-Gate 1, step 6. A cheap USB webcam does not hold 30 fps -- exposure lengthens
-in low light, the driver drops frames, USB bandwidth caps the format. Drop rate
-in this project is computed against frames that actually arrived, so the real
-arrival rate has to be measured before any of the overload numbers mean
-anything. Computing against a nominal 30 would fabricate drops that never
-happened.
+Gate 1, step 6. A cheap USB webcam does not hold 30 fps: exposure lengthens in
+low light, the driver drops frames, USB bandwidth caps the format. Drop rate
+here is computed against frames that actually arrived, so the real arrival
+rate has to be measured first. Computing against a nominal 30 would fabricate
+drops that never happened.
 
     python3 tools/measure_camera.py --seconds 30
     python3 tools/measure_camera.py --seconds 30 --device 0 --width 640 --height 480
@@ -81,7 +80,7 @@ def main() -> int:
     with lock:
         stamps = sorted(stamps)
     if len(stamps) < 3:
-        print(f"only {len(stamps)} frames captured -- is the camera connected?", file=sys.stderr)
+        print(f"only {len(stamps)} frames captured. Is the camera connected?", file=sys.stderr)
         return 1
 
     intervals = [b - a for a, b in zip(stamps, stamps[1:])]

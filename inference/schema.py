@@ -8,14 +8,13 @@ and must be able to express ignorance:
 
     {"path_status": "unknown", "obstacle_location": "unknown"}
 
-`Failure` enumerates every way a result can be unusable.  Each is a published
-outcome with its own counter; inference is never retried to obtain parseable
-output.  A retry would hide two or three model invocations inside one
-published latency, and would bury a real deployment problem in an average
-that looks fine.
+`Failure` enumerates every way a result can be unusable. Each is a published
+outcome with its own counter, and inference is never retried to get parseable
+output: a retry would hide two or three model invocations inside one published
+latency.
 
 On failure the pipeline still publishes a record, with semantics set to the
-explicit unknown state and `validation` naming the cause -- so a consumer can
+explicit unknown state and `validation` naming the cause, so a consumer can
 tell "the model says it does not know" from "the model produced garbage".
 """
 
@@ -40,9 +39,9 @@ class Failure(str, enum.Enum):
     """Every way a published result can fail to be usable.
 
     The first three are the model's fault, the next two the engine's, and
-    `PIPELINE_ERROR` is ours.  Keeping them separate matters: "8% invalid" and
-    "8% timeouts" call for entirely different fixes, and folding our own bugs
-    into `ENGINE_ERROR` would blame the model for them.
+    `PIPELINE_ERROR` is ours. They stay separate because "8% invalid" and "8%
+    timeouts" need different fixes, and folding our own bugs into
+    `ENGINE_ERROR` would blame the model for them.
     """
 
     NONE = "none"
@@ -73,10 +72,9 @@ REQUIRED_KEYS = ("path_status", "obstacle_location")
 
 UNKNOWN_SEMANTIC = {"path_status": "unknown", "obstacle_location": "unknown"}
 
-# Deliberately not in the schema: any field expressing model confidence.  A
-# VLM emitting "confidence": "high" is producing a token, not a calibrated
-# probability, and publishing it would invite a consumer to threshold on it.
-# Such keys are stripped (and counted), not published.
+# No confidence field, by design. A VLM emitting "confidence": "high" is
+# producing a token, not a calibrated probability, and publishing it would
+# invite a consumer to threshold on it. Such keys are stripped and counted.
 
 
 class ValidationReport(dict):
@@ -109,11 +107,11 @@ def extract_json_object(text: str) -> Tuple[Optional[str], bool]:
     Returns ``(json_text, needed_extraction)``.
 
     Instruction-tuned models wrap JSON in prose or a ```json fence even when
-    told not to, so this scans for the first balanced top-level ``{...}``.
-    It is one deterministic parsing step, not a retry: the model is invoked
-    exactly once per admitted frame either way.  ``needed_extraction`` is
-    reported separately so a prompt that keeps losing the output format stays
-    visible instead of being averaged into "valid".
+    told not to, so this scans for the first balanced top-level ``{...}``. It
+    is one deterministic parsing step, not a retry: the model is invoked once
+    per admitted frame either way. ``needed_extraction`` is reported
+    separately, so a prompt that keeps losing the output format stays visible
+    instead of averaging into "valid".
     """
     stripped = text.strip()
     if stripped.startswith("{") and stripped.endswith("}"):
@@ -151,8 +149,8 @@ def _semantically_usable(path_status: str, location: str) -> Optional[str]:
     """Cross-field consistency. Returns a reason string if unusable, else None.
 
     Individually legal values can still combine into an answer a consumer
-    cannot act on.  These three rules are the whole check; they are stated in
-    the README so a reviewer can disagree with them explicitly.
+    cannot act on. These three rules are the whole check, and they are stated
+    in the README so a reviewer can disagree with them explicitly.
     """
     if path_status == "blocked" and location in ("none", "unknown"):
         return "path_status=blocked with no obstacle location"

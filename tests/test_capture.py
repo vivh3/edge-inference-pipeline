@@ -76,9 +76,9 @@ def mjpg_640x480(buffers=2):
 def test_the_driver_gets_more_than_one_capture_buffer(cv2_returning):
     # With exactly one buffer the application holds the only one while it
     # works, the sensor's next frame has nowhere to go, and the driver
-    # discards it -- measured at exactly half rate on real hardware, at every
-    # resolution. Those frames vanish before a frame_id is ever stamped, so
-    # no drop rate downstream can account for them.
+    # discards it: measured at exactly half rate on real hardware, at every
+    # resolution. Those frames vanish before a frame_id is ever stamped, so no
+    # drop rate downstream can account for them.
     cap = cv2_returning(mjpg_640x480())
     WebcamSource().open()
     requested = dict(cap.calls)[BUFFERSIZE]
@@ -100,8 +100,8 @@ def test_the_buffer_depth_is_read_back_with_the_rest_of_the_format(cv2_returning
 
 def test_mjpg_is_requested_rather_than_left_to_the_driver(cv2_returning):
     # OpenCV's V4L2 backend defaults to uncompressed YUYV, which USB 2.0
-    # bandwidth caps at a few fps -- and some cameras offer no YUYV mode at
-    # the requested size at all.
+    # bandwidth caps at a few fps, and some cameras offer no YUYV mode at the
+    # requested size at all.
     cap = cv2_returning(mjpg_640x480())
     WebcamSource().open()
     assert (FOURCC, code("MJPG")) in cap.calls

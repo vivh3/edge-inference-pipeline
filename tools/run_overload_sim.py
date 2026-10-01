@@ -1,26 +1,25 @@
 #!/usr/bin/env python3
 """Overload experiment: latest-frame admission vs FIFO, under a slow engine.
 
-This is the headline comparison, run against a *synthetic* engine so it is
-reproducible on any machine with a stdlib Python and no accelerator.  Read the
-caveat and then read it again:
+The headline comparison, run against a synthetic engine so it reproduces on
+any machine with a stdlib Python and no accelerator.
 
-    The service-time distribution here is an input, not a measurement.  These
-    runs demonstrate the admission policy's behaviour; they say nothing about
-    how fast any real model is.  Results land in results/simulated/ and are
-    never reported as baseline or optimised performance.
+    The service-time distribution is an input, not a measurement. These runs
+    show how the admission policy behaves and say nothing about how fast any
+    real model is. Results land in results/simulated/ and are never reported
+    as baseline or optimised performance.
 
-What it does show, and what the same code will show on hardware once the real
-engine is substituted, is the shape of the argument:
+What they do show, and what the same code shows on hardware once the real
+engine is substituted:
 
-  latest          result age stays near one inference service time; drop rate
-                  rises with the overload ratio.
-  fifo_bounded    result age saturates near capacity x service time -- bounded,
-                  but bounded at a much worse value, and the surviving frames
-                  are the oldest ones.
-  fifo_unbounded  result age grows without bound.  Labelled pathological; it
-                  is here so the "grows without bound" claim is attached to
-                  the one configuration where it is literally true.
+  latest          result age stays near one service time; drop rate rises
+                  with the overload ratio.
+  fifo_bounded    result age saturates near capacity x service time: bounded,
+                  but at a much worse value, and the frames that survive are
+                  the oldest ones.
+  fifo_unbounded  result age grows without bound. Labelled pathological, and
+                  here so the claim attaches to the one configuration where
+                  it is literally true.
 
 Usage:
     python3 tools/run_overload_sim.py --fps 30 --latency 0.6 --duration 30

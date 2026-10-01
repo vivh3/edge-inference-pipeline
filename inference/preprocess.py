@@ -1,13 +1,12 @@
 """Preprocessing: bring every frame to the one fixed input form the model sees.
 
-Its own timed stage because it is a plausible bottleneck: on a Jetson a naive
+Timed as its own stage because it is a plausible bottleneck. On a Jetson,
 resize plus colour conversion plus a host-to-device copy can cost tens of
 milliseconds per frame, and if that dominates, the fix has nothing to do with
-the model. Gate 3 needs to be able to attribute time here.
+the model.
 
-The backend is resolved lazily so the core, the tests, and the overload
-simulation all run with no OpenCV, no Pillow, and no camera -- which is what
-makes the architecture portable ahead of hardware.
+The backend resolves lazily, so the core, the tests and the overload
+simulation all run with no OpenCV, no Pillow and no camera.
 """
 
 from __future__ import annotations
@@ -32,9 +31,9 @@ class Preprocessor:
     """Resize to the frozen resolution and hand the model a consistent input.
 
     `backend="auto"` picks OpenCV, then PIL, then a passthrough for the
-    synthetic payloads used by the simulation.  Whichever is used is recorded
-    on every result, because a measurement taken with one backend is not
-    comparable to a measurement taken with another.
+    synthetic payloads the simulation uses. Whichever is used is recorded on
+    every result: a measurement taken with one backend is not comparable to
+    one taken with another.
     """
 
     def __init__(
@@ -77,11 +76,11 @@ class Preprocessor:
     def run(self, payload: Any) -> PreprocessResult:
         """Resize to the frozen resolution. Reports the backend actually used.
 
-        The reported backend is per call, not the one resolved at startup: a
-        payload the resolved backend cannot handle falls through unresized,
-        and labelling that "opencv" would break the frozen-resolution
-        guarantee silently. `backend == "passthrough"` on a real frame means
-        the image did not get resized -- treat it as a bug, not a fallback.
+        Per call, not the backend resolved at startup. A payload the resolved
+        backend cannot handle falls through unresized, and labelling that
+        "opencv" would silently break the frozen-resolution guarantee.
+        "passthrough" on a real frame means the image was never resized: a
+        bug, not a fallback.
         """
         start = monotonic()
         size = (self.policy.image_width, self.policy.image_height)
@@ -90,9 +89,9 @@ class Preprocessor:
         image = payload
 
         if resolved == "opencv" and _looks_like_array(payload):
-            # OpenCV hands back BGR; the model expects RGB. Getting this wrong
-            # still runs and still answers, just worse -- a silent failure that
-            # looks like a bad model rather than a bug.
+            # OpenCV hands back BGR; the model expects RGB. Getting this
+            # wrong still runs and still answers, just worse: a silent failure
+            # that reads as a bad model.
             image = self._cv2.resize(payload, size, interpolation=self._cv2.INTER_AREA)
             image = self._cv2.cvtColor(image, self._cv2.COLOR_BGR2RGB)
             used = "opencv"

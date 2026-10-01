@@ -18,15 +18,14 @@ Rates: drop rate is dropped / captured, against frames that actually arrived
 rather than a nominal 30 fps. Invalid-output rate is broken out by failure
 kind, because "8% invalid" and "8% timeouts" need different fixes.
 
-Frames admitted is deliberately not reported. Under latest-frame a frame can
-be admitted and then evicted before it runs, so the count means something
-different per policy and is not comparable across the policies being
-compared. Captured, dropped and published are unambiguous, and
-`dropped + published` accounts for every captured frame bar the one in
-flight.
+Frames admitted is not reported. Under latest-frame a frame can be admitted
+and then evicted before it runs, so the count means something different per
+policy and is not comparable across them. Captured, dropped and published are
+unambiguous, and `dropped + published` accounts for every captured frame bar
+the one in flight.
 
-Queue depth is not reported either: in a correct one-slot buffer it is 0 or 1
-and carries no information.
+Queue depth is not reported either: in a one-slot buffer it is 0 or 1 and
+carries no information.
 """
 
 from __future__ import annotations
@@ -150,13 +149,11 @@ def read_rss_bytes() -> int:
 _HWMON_ROOT = "/sys/class/hwmon"
 _INA3221_NAME = "ina3221"
 
-# The rails are nested, not disjoint. On an Orin Nano the channels are
-# VDD_IN, VDD_CPU_GPU_CV and VDD_SOC, and the latter two are measured
-# downstream of the first. Summing all three counts the same current twice;
-# summing only the children misses everything on the board that is neither,
-# which at idle is 2.5 W reported against an actual 4.4 W. So when an input
-# rail is present it is reported alone, and the sum is only a fallback for
-# boards that do not expose one.
+# The rails overlap. On an Orin Nano, VDD_CPU_GPU_CV and VDD_SOC sit
+# downstream of VDD_IN. Summing all three counts the same current twice;
+# summing the children alone read 2.5 W against an actual 4.4 W at idle. So
+# the input rail is reported by itself, and the sum is a fallback for boards
+# that expose no input rail.
 _INPUT_RAIL_LABELS = ("vdd_in", "vdd_sys", "pom_5v_in")
 
 
@@ -235,9 +232,8 @@ class Metrics:
         self.peak_rss = 0
         self.power_samples: List[float] = []
         # Resource reads touch /proc and /sys. Doing that per result puts two
-        # syscall-heavy reads on the worker thread between frames, which shows
-        # up as queue age on the next one. Sample on an interval instead and
-        # reuse the last value in between.
+        # syscall-heavy reads on the worker thread between frames, which show
+        # up as queue age on the next one. Sample on an interval instead.
         self.sample_interval = 1.0
         self._last_sample_ts = -1e9
         self._last_rss = 0
