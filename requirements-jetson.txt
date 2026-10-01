@@ -10,7 +10,7 @@
 #   sudo apt install -y python3-venv libopenblas-dev python3-opencv
 #   python3 -m venv --system-site-packages .venv
 #   source .venv/bin/activate
-#   pip install "numpy<2" pillow
+#   pip install "numpy<2" "pillow==12.3.0"
 #   pip install torch==2.8.0 torchvision==0.23.0 \
 #       --index-url https://pypi.jetson-ai-lab.io/jp6/cu126
 #   pip install "transformers==5.18.0" "accelerate==1.15.0"
@@ -30,7 +30,13 @@
 # ABI; letting a dependency pull numpy 2.x breaks `import cv2` with an error
 # that points nowhere near its cause.
 numpy<2
-pillow
+
+# Pinned, not left bare, for the same reason as numpy but in the opposite
+# direction. Under --system-site-packages pip treats apt's Pillow 9.0.1 as
+# satisfying a bare `pillow`, installs nothing, and transformers then dies at
+# import on PIL.Image.Resampling, which arrived in Pillow 9.1. A floor would
+# work; a pin is what reproduces.
+pillow==12.3.0
 
 # Paired versions, not to be mixed: 2.8<->0.23, 2.9<->0.24, 2.10<->0.25,
 # 2.11<->0.26. 2.8.0 is the oldest the index carries and the most widely
