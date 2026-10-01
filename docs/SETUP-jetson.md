@@ -214,8 +214,15 @@ above the model's input resolution. On the camera used here (j5 JVCU100) that
 is **MJPG at 640x480**: YUYV is offered only at 1024x576 and above, and only at
 20 fps or less, so uncompressed capture cannot reach 30 fps at any useful size.
 
-- Camera: `TBD`
-- Format selected: `TBD`
+- Camera: `j5create JVCU100`, UVC, on `/dev/video0`.
+- Format selected: `MJPG 640x480 @ 30 fps`, V4L2 backend, 2 capture buffers.
+- Measured delivery: `30.027 fps`, interval p50 32.1 ms / p99 36.6 ms, no long gaps.
+
+640x480 is the smallest MJPG mode at or above the model's 448x448 input, so it
+reaches the model without upscaling and keeps USB bandwidth and JPEG decode to
+a minimum. It is 4:3 against a square input, so preprocessing stretches rather
+than crops — uniform across every frame, so it biases no comparison, but it is
+a choice rather than an accident.
 
 ### One capture buffer halves the frame rate
 

@@ -52,7 +52,7 @@ so they port to the Jetson unchanged.
 ## Architecture
 
 ```
-  USB webcam  (nominal 30 fps -- actual arrival rate is measured, not assumed)
+  USB webcam  (measured 30.027 fps, not the 30 the descriptor claims)
       |
       |  capture thread: stamps trusted frame_id + monotonic capture_ts
       v
