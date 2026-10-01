@@ -336,7 +336,7 @@ and quietly measure CPU inference.
 - torch version: `2.8.0` (torchvision `0.23.0`), from
   `https://pypi.jetson-ai-lab.io/jp6/cu126`
 - transformers version: `5.18.0`, accelerate `1.15.0`
-- numpy held at `1.21.5` (`<2`), cv2 `4.5.4` from apt
+- numpy held at `1.21.5` (`<2`), cv2 `4.5.4` from apt, pillow `12.3.0` in the venv
 - Verified: `cuda.is_available()` true, device `Orin`, a real GPU matmul ran
 
 Exact pins and the two-step install are in
@@ -356,9 +356,21 @@ the short version:
 - Fits 8 GB **with the OS, CUDA context and KV cache** — start around 2B in
   float16 and only move up if headroom is real
 
-Take 20 photos with your webcam first: hallways, doorways, a bag on the floor, a
-dark room, a blank wall. Mix easy and genuinely ambiguous. You will use them to
-compare candidates, and later as the quality probe if you need one.
+Capture the probe set first, through the camera the pipeline uses:
+
+```bash
+python3 tools/capture_probe_set.py --count 20 --interval 4
+```
+
+It counts down between shots so you can move the camera or the scene, and
+records each frame's mean brightness so an unusable set is caught at capture
+time rather than after a model comparison. Mix easy against genuinely
+ambiguous: a clear hallway, a doorway, a bag on the floor, a dark room, a
+blank wall. Twenty easy frames distinguish nothing.
+
+Shooting these on a phone would compare candidates on pictures the pipeline
+never sees — different sensor, resolution, JPEG encoder and colour handling.
+The set exists to predict behaviour on *this* camera.
 
 - Model id: `TBD`
 - Revision / commit SHA: `TBD` — pin it, "latest" is not reproducible
