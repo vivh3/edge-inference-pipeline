@@ -67,8 +67,35 @@ def cv2_returning(monkeypatch):
     return install
 
 
-def mjpg_640x480():
-    return FakeCapture({WIDTH: 640, HEIGHT: 480, FPS: 30.0, FOURCC: code("MJPG")})
+def mjpg_640x480(buffers=2):
+    return FakeCapture(
+        {WIDTH: 640, HEIGHT: 480, FPS: 30.0, FOURCC: code("MJPG"), BUFFERSIZE: buffers}
+    )
+
+
+def test_the_driver_gets_more_than_one_capture_buffer(cv2_returning):
+    # With exactly one buffer the application holds the only one while it
+    # works, the sensor's next frame has nowhere to go, and the driver
+    # discards it -- measured at exactly half rate on real hardware, at every
+    # resolution. Those frames vanish before a frame_id is ever stamped, so
+    # no drop rate downstream can account for them.
+    cap = cv2_returning(mjpg_640x480())
+    WebcamSource().open()
+    requested = dict(cap.calls)[BUFFERSIZE]
+    assert requested >= 2
+
+
+def test_the_buffer_depth_stays_settable_so_the_finding_reproduces(cv2_returning):
+    cap = cv2_returning(mjpg_640x480(buffers=1))
+    WebcamSource(buffer_frames=1).open()
+    assert dict(cap.calls)[BUFFERSIZE] == 1
+
+
+def test_the_buffer_depth_is_read_back_with_the_rest_of_the_format(cv2_returning):
+    cv2_returning(mjpg_640x480(buffers=3))
+    source = WebcamSource()
+    source.open()
+    assert source.negotiated["buffer_frames"] == 3
 
 
 def test_mjpg_is_requested_rather_than_left_to_the_driver(cv2_returning):
@@ -127,6 +154,7 @@ def test_the_drivers_answer_is_read_back_not_assumed(cv2_returning):
         "fps": 20.0,
         "fourcc": "YUYV",
         "backend": "V4L2",
+        "buffer_frames": 0,
     }
 
 
