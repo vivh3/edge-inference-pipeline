@@ -177,12 +177,22 @@ ssh -T git@github.com            # expect "Hi <user>! You've successfully authen
 git clone git@github.com:vivh3/edge-inference-pipeline.git
 cd edge-inference-pipeline
 
-python3 -m pytest tests/ -q                                  # no GPU needed
+sudo apt install -y python3-pytest     # the only dependency, and only to run the tests
+python3 -m pytest tests/ -q            # no GPU needed
 python3 tools/run_overload_sim.py --duration 12 --latency 0.4
 ```
 
-Both should pass on a bare JetPack image with no extra packages — the core is
-stdlib-only. If they do not, stop and fix that first.
+Both should pass on a bare JetPack image: the core imports nothing outside the
+standard library, and a test runner is the only thing added to exercise it. If
+they do not pass, stop and fix that first.
+
+The simulation writes into `results/simulated/`, overwriting the committed
+summaries that the README table is checked against. Running it here is a
+reproduction check, not new data, so discard the result afterwards:
+
+```bash
+git checkout -- results/
+```
 
 ---
 
