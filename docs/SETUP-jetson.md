@@ -217,6 +217,37 @@ is **MJPG at 640x480**: YUYV is offered only at 1024x576 and above, and only at
 - Camera: `TBD`
 - Format selected: `TBD`
 
+### One capture buffer halves the frame rate
+
+Found on this hardware, and worth repeating before trusting any camera number.
+
+`CAP_PROP_BUFFERSIZE` sets how many buffers the V4L2 driver gets. With exactly
+one, the application holds the only buffer while it works on a frame, the
+sensor's next frame arrives with nowhere to go, and the driver drops it. The
+result is exactly half the frame rate, at every resolution:
+
+```
+buffersize 1: 12.5 fps        buffersize 3: 25.0 fps
+buffersize 2: 25.0 fps        buffersize 4: 25.0 fps
+```
+
+Resolution independence is what identifies it. Bandwidth, sensor readout and
+JPEG decode all scale with frame size; this does not. Streaming the same format
+straight from the kernel (`v4l2-ctl --stream-mmap`, which defaults to four
+buffers) reached ~28 fps on the same camera, which is what ruled out the camera
+itself.
+
+The reason it matters beyond the number: those frames are discarded inside the
+driver, before capture stamps a `frame_id`. Nothing downstream can see or count
+them, so a reported drop rate would silently describe half the input. A single
+buffer looks like it minimises staleness and actually destroys frames with no
+accounting — the opposite of what this project argues for. Keep driver-side
+queueing at the shallow minimum (two: one held, one filling) and let the
+admission policy handle staleness where the decision is explicit and counted.
+
+`--buffer-frames 1` reproduces it.
+
+
 JetPack ships an OpenCV built with GStreamer, and OpenCV prefers it. GStreamer
 does not honour the pixel format request — it logs `unhandled property` and may
 fail to start a pipeline at all. The capture code names the V4L2 backend

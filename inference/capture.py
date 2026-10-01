@@ -108,6 +108,16 @@ class WebcamSource(_BaseSource):
     decode per frame, which lands in preprocessing and is measured there
     rather than being hidden.
 
+    The driver is given more than one capture buffer. With exactly one, the
+    application holds the only buffer while it works on a frame, the sensor's
+    next frame arrives with nowhere to go, and the driver discards it -- every
+    other frame, measured at exactly half rate on this hardware regardless of
+    resolution. Those frames are lost below the level where `frame_id` is ever
+    stamped, so nothing downstream can count them and the reported drop rate
+    silently describes half the input. Driver-side queueing is kept to the
+    shallow minimum and staleness is handled by the admission policy instead,
+    where the decision is explicit, counted, and defensible.
+
     The capture backend is named explicitly too. JetPack ships an OpenCV built
     with GStreamer and prefers it, and GStreamer does not honour the pixel
     format request -- it reports the property as unhandled and, on the camera
@@ -123,6 +133,7 @@ class WebcamSource(_BaseSource):
         fps_hint: float = 30.0,
         fourcc: str = "MJPG",
         backend: str = "v4l2",
+        buffer_frames: int = 2,
     ) -> None:
         super().__init__()
         self.device = device
@@ -131,6 +142,7 @@ class WebcamSource(_BaseSource):
         self.fps_hint = fps_hint
         self.fourcc = fourcc
         self.backend = backend
+        self.buffer_frames = buffer_frames
         # What the driver settled on, filled in by open(). Recorded in run
         # notes, because the requested format is a claim and this is the fact.
         self.negotiated: Optional[dict] = None
@@ -150,11 +162,12 @@ class WebcamSource(_BaseSource):
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         cap.set(cv2.CAP_PROP_FPS, self.fps_hint)
-        # Ask the driver for the shallowest capture queue available. Frames
-        # buffered inside the driver are already stale by the time we read
-        # them, and no application-level policy can undo that staleness.
+        # Two is the shallowest depth that does not starve the driver: one
+        # buffer for us to hold, one for the sensor to fill. Setting 1 here
+        # halves the frame rate (see the class docstring); it stays reachable
+        # so the measurement that established that can be reproduced.
         try:
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, self.buffer_frames)
         except Exception:
             pass
         if not cap.isOpened():
@@ -177,6 +190,7 @@ class WebcamSource(_BaseSource):
             "fps": float(cap.get(cv2.CAP_PROP_FPS) or 0.0),
             "fourcc": fourcc.strip("\x00 ") or None,
             "backend": getattr(cap, "getBackendName", lambda: None)(),
+            "buffer_frames": int(cap.get(cv2.CAP_PROP_BUFFERSIZE) or 0),
         }
 
     def _run(self, sink) -> None:
