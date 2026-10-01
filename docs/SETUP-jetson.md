@@ -333,8 +333,15 @@ python3 -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 If that prints `False`, stop. Fix it or switch to the container. Do not proceed
 and quietly measure CPU inference.
 
-- torch version: `TBD`
-- transformers version: `TBD`
+- torch version: `2.8.0` (torchvision `0.23.0`), from
+  `https://pypi.jetson-ai-lab.io/jp6/cu126`
+- transformers version: `5.18.0`, accelerate `1.15.0`
+- numpy held at `1.21.5` (`<2`), cv2 `4.5.4` from apt
+- Verified: `cuda.is_available()` true, device `Orin`, a real GPU matmul ran
+
+Exact pins and the two-step install are in
+[`requirements-jetson.txt`](../requirements-jetson.txt). `pip install -r` on
+its own does not reproduce it, and the file says why.
 
 ---
 
