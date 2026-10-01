@@ -116,9 +116,13 @@ comparison.
 
 ## 3. Instrumentation
 
+`pip3` is not in the JetPack image, and the `jtop` service is created by the
+install rather than existing beforehand:
+
 ```bash
-sudo pip3 install jetson-stats
-sudo systemctl restart jtop.service
+sudo apt install -y python3-pip
+sudo pip3 install -U jetson-stats
+sudo jtop --install-service
 # log out and back in, then:
 jtop
 ```
@@ -129,6 +133,10 @@ Confirm before continuing:
 - [ ] GPU clock readable
 - [ ] memory total and used readable
 
+Note the idle memory figure. The desktop session costs about 2.3 GB of the
+7.4 GB on an 8 GB board, and GPU allocations come out of that same pool — there
+is no separate VRAM. Section 9 says what to do about it.
+
 This repo reads the INA3221 rails directly from `/sys` so power lands in the
 same CSV row as the latency measurement, rather than in a separate tool's
 timeline you would then have to align by hand. Check what it finds:
@@ -138,10 +146,19 @@ python3 -c "from telemetry.metrics import jetson_power_rail_names, read_jetson_p
 print(jetson_power_rail_names(), read_jetson_power_w(), 'W')"
 ```
 
-- Rails discovered: `TBD`
+- Rails discovered: `['VDD_IN']`, on JetPack 6.2 / L4T 36.4.3.
 
-If the list is empty, the rail paths differ on your JetPack version — note it
-and fall back to `jtop` for power, rather than reporting zeros as measurements.
+The board exposes three channels — `VDD_IN`, `VDD_CPU_GPU_CV`, `VDD_SOC` — but
+they are nested, not disjoint: the latter two are measured downstream of the
+first. Only the input rail is reported, because summing all three counts the
+same current twice and summing the two children misses everything on the board
+that is neither. Cross-check against `jtop`: the figure should match its
+`VDD_IN` row, not the sum of the rows above it.
+
+If the list is empty, the paths differ on your JetPack version. Compare against
+`ls /sys/class/hwmon/hwmon*/` and `grep -H . /sys/class/hwmon/hwmon*/in*_label`,
+and until it is fixed use `jtop` for power rather than reporting zeros as
+measurements.
 
 ---
 
@@ -150,11 +167,17 @@ and fall back to `jtop` for power, rather than reporting zeros as measurements.
 Before any model, before any camera. This takes two minutes and rules out a
 whole class of "is it the board or is it my code" confusion later.
 
+While the repository is private, clone over SSH — GitHub does not accept
+password authentication for git, so the HTTPS URL will just prompt and fail:
+
 ```bash
-git clone https://github.com/vivh3/edge-inference-pipeline.git
+ssh-keygen -t ed25519            # then add ~/.ssh/id_ed25519.pub at github.com/settings/keys
+ssh -T git@github.com            # expect "Hi <user>! You've successfully authenticated"
+
+git clone git@github.com:vivh3/edge-inference-pipeline.git
 cd edge-inference-pipeline
 
-python3 -m pytest tests/ -q                                  # 40 tests, no GPU needed
+python3 -m pytest tests/ -q                                  # no GPU needed
 python3 tools/run_overload_sim.py --duration 12 --latency 0.4
 ```
 
@@ -343,5 +366,5 @@ or 4B. The architecture is the deliverable; the parameter count is not.
 | Inference 10–50x slower than expected | Same cause. You are running on the CPU. |
 | Killed mid-inference, no traceback | Out of memory. The OOM killer is silent. Watch `jtop` during a run. |
 | Camera stuck around 10 fps | YUYV instead of MJPG, or low light lengthening exposure. |
-| `jtop` says "service not running" | Needs `systemctl restart jtop.service` and a re-login. |
-| Power rails list is empty | Path layout differs on your JetPack. Note it, use `jtop`, do not report zeros. |
+| `jtop` says "service not running" | Needs `sudo jtop --install-service` and a re-login. |
+| Power rails list is empty | Path layout differs on your JetPack. Check `/sys/class/hwmon/hwmon*/`. Use `jtop` meanwhile, do not report zeros. |
