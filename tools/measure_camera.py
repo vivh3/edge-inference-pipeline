@@ -83,11 +83,18 @@ def main() -> int:
 
     intervals = [b - a for a, b in zip(stamps, stamps[1:])]
     span = stamps[-1] - stamps[0]
-    # Frames arriving more than 1.5 inter-frame periods apart: the driver
-    # skipped one. Worth knowing, because those gaps are camera-side staleness
-    # no admission policy can undo.
-    nominal = 1.0 / args.fps_hint
-    gaps = [i for i in intervals if i > 1.5 * nominal]
+    # Frames arriving more than 1.5 of this camera's own inter-frame periods
+    # apart: the driver skipped one. Worth knowing, because those gaps are
+    # camera-side staleness no admission policy can undo.
+    #
+    # The threshold is the measured median, not the requested period. A camera
+    # steadily delivering half the rate it was asked for has a rate problem,
+    # not a gap problem, and measuring gaps against the request would report
+    # every single interval as a gap and say nothing about dropouts. The rate
+    # mismatch is already reported, on its own, as requested vs effective fps.
+    median = percentile(intervals, 50)
+    gap_threshold = 1.5 * median
+    gaps = [i for i in intervals if i > gap_threshold]
 
     report = {
         "source": label,
@@ -109,7 +116,8 @@ def main() -> int:
             "max": round(max(intervals), 5),
         },
         "long_gaps": {
-            "threshold_s": round(1.5 * nominal, 5),
+            "basis": "1.5x the measured median interval",
+            "threshold_s": round(gap_threshold, 5),
             "count": len(gaps),
             "fraction": round(len(gaps) / len(intervals), 4),
         },
