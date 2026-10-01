@@ -21,6 +21,7 @@ POLICY_BY_LABEL = {
     "fifo_bounded(8)": "fifo_bounded",
     "fifo_unbounded": "fifo_unbounded",
 }
+CAMERA_FPS = re.compile(r"measured ([\d.]+) fps")
 ROW = re.compile(
     r"\| `(latest|fifo_bounded\(8\)|fifo_unbounded)` \| (\d+) \| (\d+) \| "
     r"([\d.]+)% \| \*?\*?([\d.]+) s\*?\*? \| ([\d.]+) s \| ([\d.]+) s \|"
@@ -51,12 +52,29 @@ def main() -> int:
             if in_readme != in_file:
                 failures.append(f"{label} {field}: README {in_readme}, {path} {in_file}")
 
+    # The camera rate is the same class of claim: a number in the prose with a
+    # committed measurement behind it, and nothing but diligence keeping them
+    # together. It is the denominator of every drop rate here, so it is the
+    # worst one to let drift.
+    camera_path = os.path.join(ROOT, "results", "baseline", "camera.json")
+    claimed = CAMERA_FPS.search(readme)
+    if not claimed:
+        failures.append("README no longer states a measured camera fps")
+    elif os.path.exists(camera_path):
+        with open(camera_path) as fh:
+            measured = json.load(fh)["effective_fps"]
+        if float(claimed.group(1)) != measured:
+            failures.append(
+                f"camera fps: README {claimed.group(1)}, {camera_path} {measured}"
+            )
+
     for failure in failures:
         print(failure, file=sys.stderr)
     if failures:
         print("\nRegenerate with tools/run_overload_sim.py and update the table.", file=sys.stderr)
         return 1
     print(f"README headline table matches all {len(rows)} committed summaries")
+    print("README camera rate matches results/baseline/camera.json")
     return 0
 
 
