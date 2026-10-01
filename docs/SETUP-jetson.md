@@ -66,21 +66,46 @@ notes for your JetPack version.
 ## 2. Fix one power profile and never change it
 
 ```bash
-sudo nvpmodel -q                 # list modes and show the current one
-sudo nvpmodel -m <N>             # select one
-sudo nvpmodel -q                 # confirm it took
-sudo jetson_clocks --show        # report clock state
+grep -E '^< POWER_MODEL' /etc/nvpmodel.conf   # the modes this board offers
+sudo nvpmodel -q                              # the mode it is in now
+sudo nvpmodel -m <N>                          # select one
+sudo nvpmodel -q                              # confirm it took
+sudo jetson_clocks --show                     # report clock state
 ```
 
-- Mode selected: `TBD`
-- Rationale: `TBD`
+`nvpmodel -q` reports only the current mode, so the `grep` is what lists them.
 
-**Do not reflexively pick the highest mode.** If part of the story is
-constrained compute, locking to the maximum and then hitting thermal throttling
-manufactures a share of your own problem — and the throttling shows up as
-unexplained variance in the middle of the sustained load test, where it is
-hardest to diagnose. A mid mode is usually the better story and the steadier
-measurement.
+**Mode selected: `0` (`15W`).** Measured on an Orin Nano 8GB Super, JetPack 6.2
+/ L4T R36.4.3, which offers `0: 15W`, `1: 25W`, `2: MAXN_SUPER`.
+
+**Rationale: 15W is the only one of the three that also exists on the non-Super
+Orin Nano.** Numbers published at 25W cannot be reproduced on that board at all,
+and reproducibility from a fresh clone is a constraint this repository holds
+itself to. MAXN_SUPER is uncapped, so it throttles under sustained load and the
+throttling arrives as unexplained variance in the latency tail — the exact place
+the overload claim is made.
+
+What the choice costs, from `jetson_clocks --show` in each mode:
+
+| cap | mode 0 (15W) | mode 1 (25W) |
+| --- | --- | --- |
+| CPU max | 1497.6 MHz | 1344.0 MHz |
+| GPU max | 612 MHz | 918 MHz |
+| EMC max | 2133 MHz | 3199 MHz |
+
+Six A78 cores online and 4 GPU TPCs active in both; governor `schedutil`.
+
+The CPU cap being *higher* in the lower-power mode is not a typo. A power mode
+is a budget allocation, not a single dial: 15W spends more of a smaller budget
+on CPU and less on GPU and memory. The real cost is the other two rows. Token
+decode re-reads the model weights once per token, so it is bound by memory
+bandwidth rather than arithmetic, and the 33% lower EMC ceiling is the figure
+that will show up in decode latency. Expect inference meaningfully slower than
+this board can go. That is acceptable here — a wider gap between the 30 fps
+sensor and the model sharpens the comparison the project exists to make.
+
+Revisit only if Gate 1 is too slow to iterate against, and then retake every
+measurement at the new mode.
 
 **Methodology consistency matters more than which mode.** Record it once and
 hold it across every measurement in this repository: baseline, overload
