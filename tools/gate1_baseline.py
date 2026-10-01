@@ -4,14 +4,13 @@
 Answers the three questions Gate 1 exists to answer, and nothing else:
 
   1. Does the model clear the output contract? Not "did it produce plausible
-     text" -- does inference.schema.validate accept it.
+     text", but does inference.schema.validate accept it.
   2. How much memory is left with the model loaded? Weights on disk are not
      runtime footprint, and the Jetson shares one 8 GB pool with the OS.
   3. How long does one inference take, warmup discarded?
 
-Answer 3 is what the performance budget gets set from in Gate 2. It is
-deliberately measured here, with no camera and no pipeline attached, so it is
-the model's cost and nothing else.
+Gate 2 sets the performance budget from answer 3. It is measured here with no
+camera and no pipeline attached, so it is the model's cost and nothing else.
 
     python3 tools/gate1_baseline.py --model <org>/<model> --image hallway.jpg
     python3 tools/gate1_baseline.py --mock --image anything.jpg   # smoke test
@@ -148,7 +147,7 @@ def main() -> int:
     report = {
         "wall_clock": wall_clock_iso(),
         "clock": CLOCK_NAME,
-        "model": "MOCK -- not a real model" if args.mock else args.model,
+        "model": "MOCK, not a real model" if args.mock else args.model,
         "device": args.device,
         "dtype": args.dtype,
         "image": os.path.basename(args.image),

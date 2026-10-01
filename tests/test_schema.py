@@ -89,9 +89,9 @@ def test_object_wrapped_in_a_list_is_recovered_by_extraction():
     """Documented behaviour, not an accident.
 
     The extractor scans for the first balanced top-level object, so a model
-    that wraps its answer in a list still yields a usable result -- and the
-    fact that extraction was needed is recorded, so the prompt problem stays
-    visible in the extraction rate.
+    that wraps its answer in a list still yields a usable result. The fact that
+    extraction was needed is recorded, so the prompt problem stays visible in
+    the extraction rate.
     """
     semantic, report = validate('[{"path_status": "clear", "obstacle_location": "none"}]')
     assert report.ok

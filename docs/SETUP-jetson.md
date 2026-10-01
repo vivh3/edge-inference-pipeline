@@ -54,7 +54,7 @@ free -h                          # confirm ~8 GB total
 - JetPack / L4T version: `TBD`
 
 **Storage note.** The NVMe SSD is optional and for model weights only. Do not
-move the root filesystem onto it unless it is trivial — boot configuration is
+move the root filesystem onto it unless it is trivial. Boot configuration is
 not part of this project.
 
 **If you have a Super dev kit and the Super power modes are missing**, the
@@ -82,7 +82,7 @@ sudo jetson_clocks --show                     # report clock state
 Orin Nano.** Numbers published at 25W cannot be reproduced on that board at all,
 and reproducibility from a fresh clone is a constraint this repository holds
 itself to. MAXN_SUPER is uncapped, so it throttles under sustained load and the
-throttling arrives as unexplained variance in the latency tail — the exact place
+throttling arrives as unexplained variance in the latency tail, the exact place
 the overload claim is made.
 
 What the choice costs, from `jetson_clocks --show` in each mode:
@@ -101,8 +101,8 @@ on CPU and less on GPU and memory. The real cost is the other two rows. Token
 decode re-reads the model weights once per token, so it is bound by memory
 bandwidth rather than arithmetic, and the 33% lower EMC ceiling is the figure
 that will show up in decode latency. Expect inference meaningfully slower than
-this board can go. That is acceptable here — a wider gap between the 30 fps
-sensor and the model sharpens the comparison the project exists to make.
+this board can go. That is acceptable: a wider gap between the 30 fps sensor
+and the model sharpens the comparison the project exists to make.
 
 Revisit only if Gate 1 is too slow to iterate against, and then retake every
 measurement at the new mode.
@@ -134,7 +134,7 @@ Confirm before continuing:
 - [ ] memory total and used readable
 
 Note the idle memory figure. The desktop session costs about 2.3 GB of the
-7.4 GB on an 8 GB board, and GPU allocations come out of that same pool — there
+7.4 GB on an 8 GB board, and GPU allocations come out of that same pool. There
 is no separate VRAM. Section 9 says what to do about it.
 
 This repo reads the INA3221 rails directly from `/sys` so power lands in the
@@ -148,9 +148,8 @@ print(jetson_power_rail_names(), read_jetson_power_w(), 'W')"
 
 - Rails discovered: `['VDD_IN']`, on JetPack 6.2 / L4T 36.4.3.
 
-The board exposes three channels — `VDD_IN`, `VDD_CPU_GPU_CV`, `VDD_SOC` — but
-they are nested, not disjoint: the latter two are measured downstream of the
-first. Only the input rail is reported, because summing all three counts the
+The board exposes three channels, `VDD_IN`, `VDD_CPU_GPU_CV` and `VDD_SOC`, but
+they overlap: the latter two are measured downstream of the first. Only the input rail is reported, because summing all three counts the
 same current twice and summing the two children misses everything on the board
 that is neither. Cross-check against `jtop`: the figure should match its
 `VDD_IN` row, not the sum of the rows above it.
@@ -167,8 +166,8 @@ measurements.
 Before any model, before any camera. This takes two minutes and rules out a
 whole class of "is it the board or is it my code" confusion later.
 
-While the repository is private, clone over SSH — GitHub does not accept
-password authentication for git, so the HTTPS URL will just prompt and fail:
+While the repository is private, clone over SSH. GitHub does not accept
+password authentication for git, so the HTTPS URL only prompts and fails:
 
 ```bash
 ssh-keygen -t ed25519            # then add ~/.ssh/id_ed25519.pub at github.com/settings/keys
@@ -206,8 +205,8 @@ v4l2-ctl -d /dev/video0 --list-formats-ext
 
 Plug the camera into a port on the Jetson itself, not a hub. A hub shares
 bandwidth across everything on it, and the result arrives as dropped and late
-frames in section 6 — where the whole point is to find out what the camera
-delivers, not what the hub allows.
+frames in section 6, where the point is to find out what the camera delivers,
+not what the hub allows.
 
 Read `--list-formats-ext` for the format that sustains 30 fps at a size at or
 above the model's input resolution. On the camera used here (j5 JVCU100) that
@@ -221,7 +220,7 @@ is **MJPG at 640x480**: YUYV is offered only at 1024x576 and above, and only at
 640x480 is the smallest MJPG mode at or above the model's 448x448 input, so it
 reaches the model without upscaling and keeps USB bandwidth and JPEG decode to
 a minimum. It is 4:3 against a square input, so preprocessing stretches rather
-than crops — uniform across every frame, so it biases no comparison, but it is
+than crops. Uniform across every frame, so it biases no comparison, but it is
 a choice rather than an accident.
 
 ### One capture buffer halves the frame rate
@@ -248,7 +247,7 @@ The reason it matters beyond the number: those frames are discarded inside the
 driver, before capture stamps a `frame_id`. Nothing downstream can see or count
 them, so a reported drop rate would silently describe half the input. A single
 buffer looks like it minimises staleness and actually destroys frames with no
-accounting — the opposite of what this project argues for. Keep driver-side
+accounting, the opposite of what this project argues for. Keep driver-side
 queueing at the shallow minimum (two: one held, one filling) and let the
 admission policy handle staleness where the decision is explicit and counted.
 
@@ -256,7 +255,7 @@ admission policy handle staleness where the decision is explicit and counted.
 
 
 JetPack ships an OpenCV built with GStreamer, and OpenCV prefers it. GStreamer
-does not honour the pixel format request — it logs `unhandled property` and may
+does not honour the pixel format request: it logs `unhandled property` and may
 fail to start a pipeline at all. The capture code names the V4L2 backend
 explicitly for that reason. If `measure_camera.py` prints GStreamer warnings,
 that is what is happening; `--backend v4l2` is already the default.
@@ -264,8 +263,7 @@ that is what is happening; `--backend v4l2` is already the default.
 MJPG costs a JPEG decode per frame. That decode lands in preprocessing, where
 it is measured, rather than disappearing into the queue wait. The Orin has
 hardware JPEG decoders that OpenCV's `VideoCapture` does not use, which makes
-this a candidate for the section 11 bottleneck investigation — note it and
-move on.
+this a candidate for the bottleneck investigation. Note it and move on.
 
 Look at the formats. **MJPG usually reaches higher frame rates than YUYV** at
 the same resolution, because YUYV is uncompressed and saturates USB bandwidth.
@@ -300,7 +298,7 @@ Put the effective figure in the README next to "nominal 30 fps". Written to
 
 ---
 
-## 7. Install PyTorch — the step that actually bites
+## 7. Install PyTorch: the step that actually bites
 
 **`pip install torch` from PyPI will not give you a working GPU build on
 Jetson.** You will get a CPU-only ARM wheel at best, and silently run everything
@@ -311,7 +309,7 @@ Two paths:
 
 - **NVIDIA's Jetson wheels.** NVIDIA publishes PyTorch wheels built against the
   CUDA in your JetPack. Get the current index URL from NVIDIA's Jetson PyTorch
-  install page for your exact JetPack version — it changes between releases, so
+  install page for your exact JetPack version. It changes between releases, so
   a URL written down here would rot.
 - **A prebuilt container.** `jetson-containers` (dusty-nv) ships images with
   torch, torchvision and transformers already matched to your JetPack. More
@@ -353,7 +351,7 @@ the short version:
 - Open weights, **permissive licence** (Apache-2.0 or MIT are unambiguous)
 - Loadable through `AutoProcessor` / `AutoModelForImageTextToText`
 - Instruction-tuned (`-Instruct` / `-it` in the name)
-- Fits 8 GB **with the OS, CUDA context and KV cache** — start around 2B in
+- Fits 8 GB **with the OS, CUDA context and KV cache**. Start around 2B in
   float16 and only move up if headroom is real
 
 Capture the probe set first, through the camera the pipeline uses:
@@ -369,11 +367,11 @@ ambiguous: a clear hallway, a doorway, a bag on the floor, a dark room, a
 blank wall. Twenty easy frames distinguish nothing.
 
 Shooting these on a phone would compare candidates on pictures the pipeline
-never sees — different sensor, resolution, JPEG encoder and colour handling.
+never sees: different sensor, resolution, JPEG encoder and colour handling.
 The set exists to predict behaviour on *this* camera.
 
 - Model id: `TBD`
-- Revision / commit SHA: `TBD` — pin it, "latest" is not reproducible
+- Revision / commit SHA: `TBD`. Pin it; "latest" is not reproducible
 - Licence, and where you read it: `TBD`
 
 ---
@@ -387,8 +385,8 @@ python3 tools/gate1_baseline.py --model <org>/<model> --image photos/hallway.jpg
 No camera, no pipeline, no ROS. One image, repeated, warmup discarded. This
 isolates the model's cost from everything else.
 
-The script reports memory at three points — before load, after load and warmup,
-and steady state — because **quantised weight size is not runtime footprint**. A
+The script reports memory at three points, before load, after load and warmup,
+and at steady state, because **weight size on disk is not runtime footprint**. A
 4B model at 4-bit is 3–4 GB on disk, but the vision encoder activations, KV
 cache, CUDA context, image tensors and the OS all share the same 8 GB, and
 physical memory on a Jetson is unified so there is no separate device pool to
@@ -410,7 +408,7 @@ Written to `results/baseline/model.json`.
 
 **Time to first token** is reported separately if the runtime exposes it
 cleanly. It separates prefill (vision encoding, one pass) from decode
-(autoregressive, per token) — different costs with different fixes. If getting
+(autoregressive, per token), which are different costs with different fixes. If getting
 it requires invasive instrumentation, skip it. It is not worth fighting the
 runtime for.
 
@@ -423,8 +421,8 @@ You are done when all five hold:
 - [ ] `jtop` reads power, clocks and memory
 - [ ] One power profile selected and written down
 - [ ] Effective camera fps measured, not assumed
-- [ ] One image produces JSON that **clears `inference.schema.validate`** — not
-      "plausible text", the actual validator
+- [ ] One image produces JSON that **clears `inference.schema.validate`**, not
+      "plausible text" but the actual validator
 - [ ] Baseline latency and real memory headroom recorded
 
 Then fill in the tables above, commit `results/baseline/`, and stop. Gate 1 does

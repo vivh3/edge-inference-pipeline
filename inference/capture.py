@@ -1,9 +1,8 @@
 """Capture sources.
 
-The producer's contract is narrow on purpose: stamp a trusted `frame_id` and
-a monotonic `capture_ts` at the moment the frame is obtained, hand it to the
-admission policy, and never block on inference.  Everything that makes the
-system interesting happens downstream of this file.
+The producer's contract is narrow: stamp a trusted `frame_id` and a monotonic
+`capture_ts` when the frame is obtained, hand it to the admission policy, and
+never block on inference.
 """
 
 from __future__ import annotations
@@ -51,10 +50,9 @@ class _BaseSource:
 class SyntheticCamera(_BaseSource):
     """Paced frame source with no camera attached.
 
-    Used for the overload experiments so the arrival process is a controlled
-    input rather than whatever a particular USB webcam felt like doing.  Jitter
-    is included because a real UVC camera is not periodic, and a policy that
-    only works against a perfectly periodic producer has not been tested.
+    Used for the overload experiments, so the arrival process is a controlled
+    input. Jitter is included because a real UVC camera is not periodic, and a
+    policy tested only against a periodic producer is not tested.
     """
 
     def __init__(self, fps: float = 30.0, jitter: float = 0.002, seed: int = 0) -> None:
@@ -83,9 +81,9 @@ class SyntheticCamera(_BaseSource):
 def _frame_size(frame: Any, fallback: Tuple[int, int]) -> Tuple[int, int]:
     """(width, height) from the frame itself, falling back to what was asked.
 
-    A driver is free to hand back a resolution other than the one requested.
-    `Frame.width`/`height` are trusted metadata, so they have to describe the
-    array that arrived rather than repeat the request that was made.
+    A driver may return a different resolution than requested. `Frame.width`
+    and `height` are trusted metadata, so they describe the array that
+    arrived, not the request.
     """
     shape = getattr(frame, "shape", None)
     if shape is not None and len(shape) >= 2:
@@ -94,35 +92,22 @@ def _frame_size(frame: Any, fallback: Tuple[int, int]) -> Tuple[int, int]:
 
 
 class WebcamSource(_BaseSource):
-    """UVC webcam via OpenCV.
+    """UVC webcam via OpenCV. Three defaults are wrong here, so all are set.
 
-    No fps is requested from the driver beyond a hint: the actual inter-frame
-    arrival times are measured (telemetry.Metrics.inter_frame_intervals) and
-    reported, because a cheap USB camera will not hold a steady 30 fps and
-    drop rate must be computed against frames that actually arrived.
+    MJPG, because OpenCV defaults to uncompressed YUYV, which USB bandwidth
+    caps well under 30 fps; some cameras offer no YUYV mode at 640x480 at all.
+    It costs a JPEG decode per frame, charged to preprocessing.
 
-    The pixel format is requested explicitly. OpenCV defaults to uncompressed
-    YUYV, and USB 2.0 bandwidth limits most webcams to a few frames per second
-    that way -- some offer no YUYV mode at the requested size at all. MJPG is
-    what a UVC camera will actually sustain at 30 fps. The cost is a JPEG
-    decode per frame, which lands in preprocessing and is measured there
-    rather than being hidden.
+    V4L2, because JetPack's OpenCV prefers GStreamer, which ignores the format
+    request and on the camera used here would not start a pipeline at all.
 
-    The driver is given more than one capture buffer. With exactly one, the
-    application holds the only buffer while it works on a frame, the sensor's
-    next frame arrives with nowhere to go, and the driver discards it -- every
-    other frame, measured at exactly half rate on this hardware regardless of
-    resolution. Those frames are lost below the level where `frame_id` is ever
-    stamped, so nothing downstream can count them and the reported drop rate
-    silently describes half the input. Driver-side queueing is kept to the
-    shallow minimum and staleness is handled by the admission policy instead,
-    where the decision is explicit, counted, and defensible.
+    Two capture buffers, because with one the driver has nowhere to write
+    while we hold the only buffer, and drops every other frame. Those frames
+    are lost before `frame_id` is stamped, so nothing downstream can count
+    them. Staleness belongs to the admission policy, where it is recorded.
 
-    The capture backend is named explicitly too. JetPack ships an OpenCV built
-    with GStreamer and prefers it, and GStreamer does not honour the pixel
-    format request -- it reports the property as unhandled and, on the camera
-    used here, fails to start a pipeline at all. V4L2 is the backend that
-    talks to a UVC webcam directly and accepts the format.
+    fps is a hint. Arrival times are measured, because drop rate is computed
+    against frames that arrived, not a nominal rate.
     """
 
     def __init__(
@@ -154,18 +139,16 @@ class WebcamSource(_BaseSource):
         api = {"v4l2": "CAP_V4L2", "gstreamer": "CAP_GSTREAMER", "any": "CAP_ANY"}
         preference = getattr(cv2, api.get(self.backend, "CAP_ANY"), 0)
         cap = cv2.VideoCapture(self.device, preference)
-        # Pixel format first. The backend resolves resolution and frame rate
-        # within the chosen format, so setting it afterwards can renegotiate
-        # the size that was just requested.
+        # Format first: the backend resolves size and rate within the chosen
+        # format, so setting it later can renegotiate the size just asked for.
         if self.fourcc:
             cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*self.fourcc))
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         cap.set(cv2.CAP_PROP_FPS, self.fps_hint)
-        # Two is the shallowest depth that does not starve the driver: one
-        # buffer for us to hold, one for the sensor to fill. Setting 1 here
-        # halves the frame rate (see the class docstring); it stays reachable
-        # so the measurement that established that can be reproduced.
+        # Two is the shallowest depth that does not starve the driver: one to
+        # hold, one for the sensor to fill. 1 stays reachable so the
+        # measurement behind that can be reproduced.
         try:
             cap.set(cv2.CAP_PROP_BUFFERSIZE, self.buffer_frames)
         except Exception:

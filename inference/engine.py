@@ -1,7 +1,7 @@
 """Inference engines.
 
 The pipeline talks to one interface, so admission, validation, telemetry and
-failure handling can be built and tested before any model exists -- and the
+failure handling can be built and tested before any model exists, and the
 model can be swapped in Gate 1 without touching anything else.
 
   MockEngine  synthetic slow component: controllable service-time
@@ -47,9 +47,8 @@ class InferenceEngine:
         """Discarded runs before measurement.
 
         The first few invocations pay for lazy CUDA context creation, kernel
-        autotuning, and allocator growth.  Including them in a latency
-        distribution produces a long tail that describes startup, not
-        steady-state service time.
+        autotuning and allocator growth. Including them produces a long tail
+        that describes startup, not steady-state service time.
         """
 
     def infer(self, image: Any, deadline: Optional[float] = None) -> RawModelOutput:  # pragma: no cover - abstract
@@ -67,15 +66,14 @@ class InferenceEngine:
 class MockEngine(InferenceEngine):
     """A deliberately slow component with controllable pathologies.
 
-    Service time is drawn from a lognormal distribution, which is a
-    reasonable shape for generative inference: a floor set by prefill and a
-    right tail set by how many tokens the model decides to emit.  The
-    parameters are inputs to an experiment, not measurements of anything.
+    Service time is drawn from a lognormal distribution, a reasonable shape
+    for generative inference: a floor set by prefill, a right tail set by how
+    many tokens the model emits. The parameters are experiment inputs, not
+    measurements of anything.
 
-    Fault probabilities let every branch of the failure taxonomy be reached
-    without waiting for a real model to misbehave.  Defaults are zero: faults
-    are opt-in so an overload experiment is not silently also a failure
-    experiment.
+    Fault probabilities reach every branch of the failure taxonomy without
+    waiting for a real model to misbehave. Defaults are zero, so an overload
+    experiment is not silently also a failure experiment.
     """
 
     name = "mock"
@@ -197,17 +195,17 @@ class MockEngine(InferenceEngine):
 class VlmEngine(InferenceEngine):
     """Adapter for an open-weights vision-language model via `transformers`.
 
-    Deliberately thin.  Everything interesting -- admission, validation,
-    telemetry, failure handling -- lives outside it, so replacing this class
-    with a different runtime is a contained change.
+    Thin by design. Admission, validation, telemetry and failure handling all
+    live outside it, so replacing this class with a different runtime is a
+    contained change.
 
-    Gate 1's job on hardware is to confirm three things and then stop:
-    the concrete model id, that `AutoModelForImageTextToText` is the right
-    class for it, and the real memory headroom.  Do not tune here.
+    Gate 1's job on hardware is to confirm three things and stop: the concrete
+    model id, that `AutoModelForImageTextToText` is the right class for it,
+    and the real memory headroom. Do not tune here.
 
-    The deadline is enforced inside generation via a stopping criterion that
-    checks the monotonic clock between tokens.  That is the honest place for
-    it: a wall-clock alarm outside the call cannot interrupt a kernel that is
+    The deadline is enforced inside generation, by a stopping criterion that
+    checks the monotonic clock between tokens. A wall-clock alarm outside the
+    call cannot interrupt a kernel that is
     already running, so a deadline enforced from outside would only ever be
     detected after the fact.
     """

@@ -24,7 +24,7 @@ generative VLM. That is true, and not what this tests.
 > replacement for real-time obstacle detection or safety-critical perception.**
 
 Robotics systems often run cheap perception continuously and expensive semantic
-reasoning rarely. This studies the second kind. The model is slow on purpose — a
+reasoning rarely. This studies the second kind. The model is slow on purpose: a
 component that keeps up with its sensor produces no overload behaviour to engineer.
 
 ---
@@ -34,14 +34,14 @@ component that keeps up with its sensor produces no overload behaviour to engine
 | gate | scope | state |
 |---|---|---|
 | 0 | Core: admission policies, output contract, failure taxonomy, telemetry, overload experiment | **done** |
-| 1 | Jetson feasibility: model running, memory headroom, measured camera rate, baseline latency | pending hardware |
-| 2 | ROS 2 integration, performance budget, end-to-end on device | pending hardware |
-| 3 | Nsight profiling, bottleneck root cause, one justified fix, sustained load | pending hardware |
-| 4 | Diagram, demo video, results, v0.1 | pending hardware |
+| 1 | Jetson feasibility: model running, memory headroom, measured camera rate, baseline latency | **in progress** |
+| 2 | ROS 2 integration, performance budget, end-to-end on device | not started |
+| 3 | Nsight profiling, bottleneck root cause, one justified fix, sustained load | not started |
+| 4 | Diagram, demo video, results, v0.1 | not started |
 
-Hardware numbers in `docs/` are marked `TBD`. No estimate is recorded as a
-measurement. The only numbers here today come from a synthetic overload experiment
-and are labelled `SIMULATED`.
+Numbers not yet measured are marked `TBD` in `docs/`. No estimate is recorded as a
+measurement. The overload comparison below comes from a synthetic engine and is
+labelled `SIMULATED`; the camera and power-profile figures are measured.
 
 The core was built ahead of hardware deliberately. `inference/` and `telemetry/` are
 stdlib-only and import nothing from ROS, CUDA, or a camera driver at module scope,
@@ -66,7 +66,7 @@ so they port to the Jetson unchanged.
   model inference          <-- UNTRUSTED; runs at whatever rate is sustainable
       |                        per-frame deadline enforced inside generation
       v
-  schema validation        <-- 5-way failure taxonomy; no retries
+  schema validation        <-- 6-way failure taxonomy; no retries
       |
       v
   metadata attachment      <-- TRUSTED frame_id + 4 monotonic timestamps
@@ -87,7 +87,7 @@ Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Admission policy, not backpressure
 
-The term matters. Backpressure slows the producer. A camera cannot be slowed — it
+The term matters. Backpressure slows the producer. A camera cannot be slowed; it
 delivers frames whether or not anything is ready. The only lever is deciding which
 frames to admit and which to discard: an **admission and drop policy**.
 
@@ -96,8 +96,7 @@ sequence. A stale frame has negative value here, because the consumer cannot tel
 three-second-old view of the world from a current one by reading the semantics. So
 the pending frame is discarded and the newest one is served.
 
-The resulting drop rate is the design working, not failing. That is why it is a
-headline number rather than a buried one.
+The resulting drop rate is the design working, so it is a headline number.
 
 ### Headline result
 
@@ -122,17 +121,17 @@ equals `captured` exactly, for all three policies. The summaries carry the queue
 at stop so you can check it.
 
 Under `latest`, result age sits at roughly one inference service time. Under
-`fifo_bounded(8)` it saturates near `(capacity + 1) x service time` — a frame admitted to
-a full queue waits behind eight others, then pays for its own inference — and the frames
-that survive are the oldest ones, backwards for this workload. The tail runs past that
-figure because service time is variable, not because the queue grew. Under
-`fifo_unbounded` it grows for as long as the run continues.
+`fifo_bounded(8)` it saturates near `(capacity + 1) x service time`: a frame admitted to
+a full queue waits behind eight others, then pays for its own inference. The frames that
+survive are the oldest ones, backwards for this workload. The tail runs past that figure
+because service time is variable, not because the queue grew. Under `fifo_unbounded` it
+grows for as long as the run continues.
 
 **Precision about the claim.** "Result age grows without bound" holds only for the
 *unbounded* FIFO. A bounded FIFO fills and starts dropping, so its age is capped by
 capacity. The unbounded case is a deliberately pathological baseline, labelled as
 one, so the claim attaches to the configuration where it is literally true. The real
-comparison is the bounded one: both drop at ~90%, and the difference is *which*
+comparison is the bounded one: both drop at ~90%, so what separates them is which
 frames survive.
 
 ---
@@ -173,8 +172,8 @@ Three decisions:
 - **`frame_id` is trusted metadata, never model output.** It is assigned at capture
   and carried alongside the model, not through it. If the model produced the
   identifier used for latency accounting, a mangled value would attribute a result to
-  the wrong capture. That would not look like a bug — it would look like jitter, and
-  it would be measured, plotted, and believed.
+  the wrong capture. That would not look like a bug. It would look like jitter, and
+  it would be measured, plotted and believed.
 - **Every duration comes from one monotonic clock.** Wall-clock time is recorded once
   per record for humans and never subtracted. An NTP step correction mid-inference
   would otherwise corrupt a latency or make it negative.
@@ -186,7 +185,7 @@ Three decisions:
 
 ## Failure handling
 
-A deliverable, not an afterthought. Five failure modes, each a published outcome:
+A deliverable, not an afterthought. Six failure modes, each a published outcome:
 
 | failure | trigger |
 |---|---|
@@ -195,19 +194,18 @@ A deliverable, not an afterthought. Five failure modes, each a published outcome
 | `unusable_semantics` | legal values that contradict each other (`blocked` with no location, `clear` with a location, `unknown` with a location) |
 | `inference_timeout` | exceeded the per-frame deadline |
 | `engine_error` | the engine raised, OOMed, or died |
-| `pipeline_error` | a stage around the engine raised — our bug, not the model's |
+| `pipeline_error` | a stage around the engine raised; our bug, not the model's |
 
 On any failure the pipeline still publishes a record, with semantics set to the
 explicit unknown state and a `validation` block naming the cause. The consumer always
 gets a well-formed record and can tell "the model says it does not know" from "the
-model produced garbage" — a distinction that disappears if both collapse to the same
+model produced garbage". That distinction disappears if both collapse to the same
 unknown.
 
-**Inference is never retried to get parseable output.** Retrying would distort every
-latency measurement — one published result silently covering several invocations —
-and hide a real deployment problem inside an average that looks fine.
-Invalid-output rate is tracked separately, broken down by failure kind, because "8%
-invalid" and "8% timeouts" need different fixes.
+**Inference is never retried to get parseable output.** Retrying would put several
+invocations inside one published latency and hide a real deployment problem inside an
+average that looks fine. Invalid-output rate is tracked separately, broken down by
+failure kind, because "8% invalid" and "8% timeouts" need different fixes.
 
 One documented exception that is not a retry: JSON wrapped in prose or a
 ```` ```json ```` fence has its first balanced top-level object extracted. The model
@@ -216,9 +214,9 @@ a prompt that fails to hold format stays visible.
 
 The worker survives anything that happens to one frame. A consumer that raises is
 isolated and counted, and a crash in our own preprocessing or validation publishes a
-`pipeline_error` record rather than killing the thread — a pipeline claiming "every
-admitted frame produces a published record" cannot die silently on the first unexpected
-exception.
+`pipeline_error` record rather than killing the thread. A pipeline claiming "every
+admitted frame produces a published record" cannot die silently on the first
+unexpected exception.
 
 A watchdog reports a `stalled` health state when nothing publishes within its interval.
 It reports; it does not restart. Restart is out of scope and would hide the failures this
@@ -238,23 +236,22 @@ All from one monotonic clock, reported separately:
 
 | metric | definition | what it tells you |
 |---|---|---|
-| queue age | `inference_start_ts - capture_ts` | waiting to be admitted, plus this frame's preprocessing — where the admission policy shows up |
+| queue age | `inference_start_ts - capture_ts` | waiting to be admitted, plus this frame's preprocessing: where the admission policy shows up |
 | preprocess | `preprocess_s` | broken out of queue age so it stays attributable |
 | inference latency | `inference_end_ts - inference_start_ts` | model execution alone |
 | post-processing | `publish_ts - inference_end_ts` | validation, serialisation, publish |
 | **result age** | `publish_ts - capture_ts` | **primary**: what a consumer actually experiences |
 
 The decomposition is exact by construction and asserted in the tests. Preprocessing runs
-before the engine stamps its start, so it falls inside queue age; it is reported
-separately rather than lost there, because Gate 3 has to be able to blame it.
-Post-processing is kept separate for the same reason — so "the bottleneck was JSON
-parsing, not the model" can be a conclusion the data supports.
+before the engine stamps its start, so it falls inside queue age, and it is reported
+separately rather than lost there because Gate 3 has to be able to blame it.
+Post-processing is separate for the same reason, so that "the bottleneck was JSON
+parsing, not the model" is a conclusion the data can support.
 
-Two counts are deliberately absent. **Frames admitted**: under latest-frame a frame can
-be admitted and then evicted before it runs, so the count means different things per
-policy and is not comparable across the policies being compared. Captured, dropped and
-published are unambiguous. **Queue depth**: in a correct one-slot buffer it is 0 or 1 and
-carries no information.
+Two counts are absent on purpose. **Frames admitted**: under latest-frame a frame can be
+admitted and then evicted before it runs, so the count means different things per policy
+and is not comparable across them. Captured, dropped and published are unambiguous.
+**Queue depth**: in a one-slot buffer it is 0 or 1 and carries no information.
 
 ---
 
@@ -279,7 +276,7 @@ is no external requirement; the honesty is in the label.
 The hypothesis is written down before profiling. Being wrong is a good README
 section. If the evidence supports none of the obvious tools, the result is
 "profiling showed X dominated, so optimising Y would not have addressed the system
-bottleneck" — stronger than forcing a tool in. TensorRT, quantisation, and Nsight are
+bottleneck". That is a stronger result than forcing a tool in. TensorRT, quantisation and Nsight are
 instruments, not success criteria.
 
 ---
@@ -317,9 +314,9 @@ Jetson setup: [`docs/SETUP-jetson.md`](docs/SETUP-jetson.md).
 ## Repository layout
 
 ```
-inference/     stdlib-only, hardware-independent core -- the argument lives here
+inference/     stdlib-only, hardware-independent core; the argument lives here
   clock.py       one monotonic source for every duration
-  record.py      Frame / RawModelOutput / PublishedResult -- the trust boundary
+  record.py      Frame / RawModelOutput / PublishedResult: the trust boundary
   schema.py      output contract, validation, failure taxonomy
   buffer.py      admission policies: latest-frame, bounded FIFO, unbounded FIFO
   capture.py     synthetic and UVC webcam sources
@@ -328,11 +325,11 @@ inference/     stdlib-only, hardware-independent core -- the argument lives here
   config.py      the frozen generation policy
   pipeline.py    async worker, health state, watchdog
 telemetry/     three metrics, rates, resource sampling, CSV/JSON output
-tools/         overload experiment, plotting
-tests/         37 tests: the contract, the policies, the failure paths
+tools/         overload experiment, camera and baseline measurement, plotting
+tests/         the contract, the policies, the capture path, the failure paths
 docs/          architecture, Jetson setup, performance methodology
 results/       simulated/ (now), baseline/ optimized/ traces/ (Gate 1-3)
-ros2_ws/       Gate 2 -- integration plumbing, a thin wrapper over the core
+ros2_ws/       Gate 2: integration plumbing, a thin wrapper over the core
 ```
 
 ---
@@ -342,19 +339,21 @@ ros2_ws/       Gate 2 -- integration plumbing, a thin wrapper over the core
 | component | version |
 |---|---|
 | Python (core) | 3.10+, standard library only |
-| JetPack / L4T | `TBD` (Gate 1) |
+| JetPack / L4T | 6.2 / R36.4.3 |
 | model id + revision/SHA | `TBD` (Gate 1) |
-| model licence | `TBD` — public, permissively licensed, cited |
-| inference runtime | `TBD` (Gate 1) |
+| model licence | `TBD`, and it will be public, permissively licensed, cited |
+| inference runtime | PyTorch 2.8.0, transformers 5.18.0 |
 | ROS 2 | Humble (Gate 2) |
-| power profile | `TBD` — fixed in Gate 1, held for every measurement |
+| power profile | `nvpmodel` mode 0 (15W), held for every measurement |
+| camera | j5create JVCU100, MJPG 640x480, measured 30.027 fps |
 
 ---
 
 ## Known issues and limitations
 
-- **No hardware measurements yet.** Everything in `results/` is from a synthetic
-  engine whose service time is an experimental input, not a claim about any model.
+- **No model measurements yet.** The overload comparison in `results/simulated/` comes
+  from a synthetic engine whose service time is an experimental input, not a claim
+  about any model. Only the camera figures in `results/baseline/` are measured.
 - **The deadline is enforced inside generation**, by a stopping criterion checking the
   clock between tokens. A kernel already executing cannot be interrupted, so an
   externally enforced deadline would only be detected after the fact. A single
@@ -371,8 +370,8 @@ ros2_ws/       Gate 2 -- integration plumbing, a thin wrapper over the core
 - **The `unusable_semantics` rules are a design choice**, stated explicitly so a
   reviewer can disagree explicitly.
 - **The bounded FIFO tail-drops.** Dropping the oldest instead converges on
-  latest-frame as capacity falls to 1; not implemented, because it adds a variant
-  without adding an argument.
+  latest-frame as capacity falls to 1. Not implemented: it adds a variant without
+  adding an argument.
 
 ---
 
@@ -381,7 +380,7 @@ ros2_ws/       Gate 2 -- integration plumbing, a thin wrapper over the core
 Nothing here is safety architecture, and the mock consumer is a logger on purpose.
 Before output of this kind could move an actuator, at minimum:
 
-- **A calibrated, validated confidence signal** — which this deliberately lacks.
+- **A calibrated, validated confidence signal**, which this deliberately lacks.
   Generated text expressing certainty is not a probability, and the schema refuses to
   publish one rather than offer a number that invites thresholding.
 - **A freshness contract enforced at the consumer**, not merely reported. The consumer

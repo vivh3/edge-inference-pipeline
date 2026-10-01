@@ -2,20 +2,19 @@
 """Capture the probe set used to compare candidate models.
 
 Frames come through `WebcamSource`, the same path live frames take, at the
-same negotiated format. A set shot on a phone would be a comparison against
-pictures the pipeline never sees -- different sensor, different resolution,
-different JPEG encoder, different colour handling. The point of the set is to
-predict how a model behaves on *this* camera.
+same negotiated format. A set shot on a phone would compare models on pictures
+the pipeline never sees: different sensor, resolution, JPEG encoder and colour
+handling. The set exists to predict behaviour on this camera.
 
 Mean brightness is recorded per frame because an unusable set is cheap to
 catch here and expensive to discover after a model comparison. A blown-out or
-near-black frame tells you about the lighting, not about the model.
+near-black frame tells you about the lighting, not the model.
 
     python3 tools/capture_probe_set.py --count 20 --interval 4
 
 Move the camera, or the scene, between shots. Mix the obvious against the
 genuinely ambiguous: a clear hallway, a doorway, a bag on the floor, a dark
-room, a blank wall. A set of twenty easy frames distinguishes nothing.
+room, a blank wall. Twenty easy frames distinguish nothing.
 """
 
 from __future__ import annotations
@@ -72,7 +71,7 @@ def main() -> int:
 
             frame = buffer.take(timeout=2.0)
             if frame is None:
-                print("\n  no frame available -- is the camera still attached?")
+                print("\n  no frame available. Is the camera still attached?")
                 return 1
 
             name = f"probe_{i:02d}.jpg"

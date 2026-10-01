@@ -1,15 +1,15 @@
 # Performance: methodology and the bottleneck investigation
 
-> **Status: methodology fixed, hardware measurements pending (Gate 1/3).**
-> Every `TBD` is a measurement to be taken on the Jetson. The only numbers
-> currently in this repository are from the synthetic overload simulation,
-> and those are labelled `SIMULATED` in their own summary files. No estimate
-> is ever written into this document as if it were a measurement.
+> **Status: methodology fixed, model measurements pending (Gate 1/3).**
+> Every `TBD` is a measurement still to be taken. The overload numbers in this
+> repository come from the synthetic simulation and are labelled `SIMULATED`
+> in their own summary files. No estimate is ever written into this document
+> as if it were a measurement.
 
 ## Methodology (fixed before any number is recorded)
 
 Everything below is held constant across every configuration that is
-compared -- baseline, optimised, and each admission policy.
+compared: baseline, optimised, and each admission policy.
 
 **Generation policy** (`inference/config.py`, one file so "was anything else
 different?" has a one-file answer):
@@ -22,26 +22,25 @@ different?" has a one-file answer):
 | decoding | greedy (`do_sample=False`), seed 0 |
 | warmup runs discarded | 5 |
 
-Generative inference latency is dominated by how many tokens are produced. A
-configuration that happens to emit a chattier answer looks slower, and that
-difference gets read as a system effect when it is a generation-policy
-artifact. Fixing prompt, resolution, output length, and decoding removes the
-confound.
+Generative latency is dominated by how many tokens come out. A configuration
+that emits a chattier answer looks slower, and that reads as a system effect
+when it is a generation artifact. Fixing prompt, resolution, output length and
+decoding removes the confound.
 
-**Limit of the guarantee, stated up front:** GPU execution is not necessarily
-bit-deterministic even under greedy decoding with a fixed seed, because
-reduction orders in fused kernels can vary between runs. Minor output
-variation is expected and does not invalidate the timing work. What is
-controlled here is output *length* and generation policy, not bit-exact
-output.
+**Limit of the guarantee.** GPU execution is not bit-deterministic even under
+greedy decoding with a fixed seed, because reduction orders in fused kernels
+vary between runs. Minor output variation is expected and does not invalidate
+the timing work. What is controlled here is output *length* and generation
+policy, not bit-exact output.
 
 **Warmup.** The first several invocations pay for lazy CUDA context creation,
-kernel autotuning, and allocator growth. Including them produces a long tail
+kernel autotuning and allocator growth. Including them produces a long tail
 that describes startup rather than steady-state service time, so five runs are
 discarded before measurement.
 
-**Environment.** One power profile, selected in Gate 1 and held fixed
-(see `docs/SETUP-jetson.md`). A comparison across two power modes is not a
+**Environment.** `nvpmodel` mode 0 (15W) on a Jetson Orin Nano Super, JetPack
+6.2 / L4T 36.4.3, held fixed for every measurement (see
+`docs/SETUP-jetson.md`). A comparison across two power modes is not a
 comparison.
 
 **Clock.** One monotonic source for every duration (`inference/clock.py`).
@@ -50,13 +49,12 @@ comparison.
 
 > Set in Gate 2 **from the Gate 1 baseline measurement**. Not before.
 
-Called a *performance budget* / *project target* deliberately, and never an
-SLO. A service-level objective derives from system or user requirements. This
-number will derive from what the hardware turned out to be capable of, which
-is a different thing, and dressing it up as an SLO would be a claim that could
-not be defended for thirty seconds in a conversation. Measuring first and then
-setting a defensible target is normal practice when there is no external
-requirement; the honesty is in the label.
+Called a *performance budget* or *project target*, never an SLO. A
+service-level objective derives from system or user requirements. This number
+will derive from what the hardware turned out to be capable of, which is a
+different thing. Measuring first and then setting a defensible target is
+normal practice when there is no external requirement; the honesty is in the
+label.
 
 | budget | target | met? |
 |---|---|---|
@@ -73,10 +71,10 @@ requirement; the honesty is in the label.
 | time to first token | `TBD` | `TBD` | `TBD` | `TBD` |
 
 Time to first token is reported separately **if the runtime exposes it
-cleanly**. It separates prefill (vision encoding + prompt processing, one
+cleanly**. It separates prefill (vision encoding and prompt processing, one
 pass) from decode (autoregressive, per token), which are different costs with
-different fixes. If extracting it requires invasive instrumentation, it is
-skipped -- it is not worth fighting the runtime for.
+different fixes. If extracting it needs invasive instrumentation, skip it. It
+is not worth fighting the runtime for.
 
 ## Overload behaviour
 
@@ -94,10 +92,10 @@ python3 tools/run_overload_sim.py --policies latest fifo_bounded fifo_unbounded
 
 ## The bottleneck investigation (Gate 3)
 
-### Step 1 -- hypothesis, written down before profiling
+### Step 1: hypothesis, written down before profiling
 
 Being wrong here is a good outcome and a good README section. The candidates,
-with what each would look like in a trace:
+and what each would look like in a trace:
 
 | candidate | signature in the trace |
 |---|---|
@@ -108,17 +106,16 @@ with what each would look like in a trace:
 | synchronisation stalls | GPU idle gaps aligned with CPU-side waits |
 | memory pressure | allocator churn, swap, or throttling under sustained load |
 
-**Hypothesis:** `TBD -- write it before running nsys, not after.`
+**Hypothesis:** `TBD. Write it before running nsys, not after.`
 
-### Step 2 -- NVTX ranges
+### Step 2: NVTX ranges
 
-Optional, and skipped if instrumentation fights back. When cheap, annotate:
-`capture`, `admission`, `preprocess`, `model_invoke`, `generate`, `parse`,
-`publish`. NVTX ranges are what make an Nsight timeline legible: without them
-the trace shows kernels, and the question is which *application stage* those
-kernels belong to.
+Optional, and skipped if instrumentation fights back. When cheap, annotate
+`capture`, `admission`, `preprocess`, `model_invoke`, `generate`, `parse` and
+`publish`. NVTX ranges make an Nsight timeline legible: without them the trace
+shows kernels, and the question is which *application stage* they belong to.
 
-### Step 3 -- profile
+### Step 3: profile
 
 ```bash
 nsys profile --trace=cuda,nvtx,osrt --output=results/traces/baseline \
@@ -128,24 +125,24 @@ nsys profile --trace=cuda,nvtx,osrt --output=results/traces/baseline \
 - Trace: `results/traces/TBD`
 - Screenshot: `TBD`
 
-### Step 4 -- what the evidence showed
+### Step 4: what the evidence showed
 
 `TBD`
 
-### Step 5 -- the one change
+### Step 5: the one change
 
 One justified change, whichever the evidence supports.
 
 **If the evidence supports none of the obvious tools, say so plainly.**
 "Profiling showed X dominated, so optimising Y would not have addressed the
 system bottleneck" is a stronger result than forcing a tool in, and it is the
-kind of judgement this project exists to demonstrate. TensorRT, quantisation,
-and Nsight are instruments here, not success criteria.
+judgement this project exists to demonstrate. TensorRT, quantisation and
+Nsight are instruments here, not success criteria.
 
 - Change: `TBD`
 - Justification from the trace: `TBD`
 
-### Step 6 -- re-measure, identical methodology
+### Step 6: re-measure, identical methodology
 
 Same power mode, same generation policy, same warmup, same duration, same
 seed. Only the one change differs.
@@ -158,11 +155,11 @@ seed. Only the one change differs.
 | drop rate | `TBD` | `TBD` | `TBD` |
 | peak RSS | `TBD` | `TBD` | `TBD` |
 
-### Step 7 -- sustained load
+### Step 7: sustained load
 
-Ten minutes continuous in the fixed power profile, logging clocks, memory, and
-power. What this catches that a short run does not: thermal throttling, memory
-growth, allocator fragmentation, and health-state flapping.
+Ten minutes continuous in the fixed power profile, logging clocks, memory and
+power. What a short run misses: thermal throttling, memory growth, allocator
+fragmentation and health-state flapping.
 
 | quantity | value |
 |---|---|
