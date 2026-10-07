@@ -65,10 +65,23 @@ label.
 
 ## Baseline (Gate 1, single image, no pipeline)
 
-| metric | p50 | p90 | p99 | max |
-|---|---|---|---|---|
-| inference latency | `TBD` | `TBD` | `TBD` | `TBD` |
-| time to first token | `TBD` | `TBD` | `TBD` | `TBD` |
+SmolVLM2-2.2B-Instruct at `482adb5`, float16, 15W, one probe frame repeated
+20 times with 5 warmup runs discarded.
+
+| metric | p50 | p90 | max |
+|---|---|---|---|
+| inference latency | 4930 ms | 4944 ms | 6134 ms |
+| time to first token | not exposed by this runtime | | |
+
+No p99: nearest-rank p99 of 20 samples is rank 20, which is the maximum, so
+quoting one would name the slowest single run as a tail statistic. The 6134 ms
+maximum is the first measured run, which still carries warmup the five
+discarded runs did not absorb.
+
+Time to first token is what would separate prefill from decode, and
+`transformers.generate` does not expose it without instrumenting the
+generation loop. That is the measurement the section below needs, and the
+reason NVTX ranges or a profiler are the next step rather than more runs.
 
 Time to first token is reported separately **if the runtime exposes it
 cleanly**. It separates prefill (vision encoding and prompt processing, one

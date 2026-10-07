@@ -522,8 +522,11 @@ You are done when all five hold:
 - [ ] `jtop` reads power, clocks and memory
 - [ ] One power profile selected and written down
 - [ ] Effective camera fps measured, not assumed
-- [ ] One image produces JSON that **clears `inference.schema.validate`**, not
-      "plausible text" but the actual validator
+- [ ] The **probe set** clears `inference.schema.validate` at a rate you can
+      state, not "plausible text" but the actual validator, and measured across
+      varied frames rather than one image repeated. One image is not a gate:
+      the 500M candidate here would have passed it on a lucky frame while
+      returning the same answer to every scene.
 - [ ] Baseline latency and real memory headroom recorded
 
 Then fill in the tables above, commit `results/baseline/`, and stop. Gate 1 does

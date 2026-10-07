@@ -200,6 +200,11 @@ def main() -> int:
         "model": "MOCK, not a real model" if args.mock else args.model,
         "device": args.device,
         "dtype": args.dtype,
+        # The engine's own account of itself, which carries the revision
+        # requested and the commit the weights actually loaded from. A result
+        # file naming a model but not a revision is not reproducible, and the
+        # pin is the whole reason --revision exists.
+        "engine": engine.describe(),
         "image": os.path.basename(args.image),
         "generation_policy": DEFAULT_POLICY.describe(),
         "runs": args.runs,
