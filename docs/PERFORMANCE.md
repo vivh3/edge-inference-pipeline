@@ -158,18 +158,42 @@ shows five of six idle and looks like there is capacity to spare.
 The discriminating test is to starve the executor: publish at 1 fps and see
 whether inference falls toward 4.930 s.
 
-### A correction, and the reason it is recorded
+### The startup outlier, explained
 
-An earlier version of this section reported preprocessing at 2.818 s and
-result age at 9.298 s, from a single published record. The distribution above
-shows preprocessing at 4 ms. That record was captured during startup, while
-the model was loading and `vmstat` showed swap-out at 12.3 MB/s -- the one
-period the board was genuinely paging.
+An earlier version of this section reported preprocessing at 2.818 s from a
+single published record, and three rounds of investigation followed from n=1.
+The distribution above shows 4 ms.
 
-Three rounds of investigation followed from n=1. It is the same error the p99
-reporting had: a number that describes one sample, read as though it
-described the system. Worth leaving in the record, because the fix for it is
-cheap and the cost of skipping it was most of an evening.
+The outlier is real and reproducible: **the first published record of every
+run** shows about 2.7 s of preprocessing. It is not paging and not
+contention. `Preprocessor.run` called `_resolve()` inside its timed region,
+and `_resolve()` is what lazily does `import cv2` -- roughly 2.7 s on this
+board, reading OpenCV's libraries off an SD card. A one-time library load was
+being charged to a per-frame metric, on the one frame where it happened.
+
+That is why `py-spy` never saw it (a one-time cost is rarely sampled) and why
+a separate probe process measured 4 ms (it imported cv2 at module scope,
+before any timing started).
+
+`Pipeline.start` now warms the preprocessor alongside the engine. The engine's
+first invocations were already discarded for exactly this reason; the
+preprocessor was paying the same kind of cost without the same treatment.
+
+Two lessons worth keeping. A number describing one sample is not a
+measurement, which is the same error the p99 reporting had an hour earlier.
+And a stage timer that encloses lazy initialisation will report startup as
+throughput, once, convincingly.
+
+### What is left to explain
+
+Inference is 6.136 s here against 4.930 s standalone, and halving the publish
+rate from 30 fps to 15 changed it not at all -- 6.136 s to 6.10 s. Executor
+GIL consumption does not explain the gap, so that hypothesis is dead too.
+
+Still open, with thermal state the next candidate: the Gate 1 baseline was
+taken on a board at 59 C after minutes of load, and these runs follow hours
+of it. Check the GPU clock against the 15W mode's 612 MHz ceiling during a
+run before looking anywhere else.
 
 ## The bottleneck investigation (Gate 3)
 

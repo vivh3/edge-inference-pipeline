@@ -71,6 +71,20 @@ class Preprocessor:
     def backend(self) -> str:
         return self._resolve()
 
+    def warmup(self) -> str:
+        """Resolve the backend before any frame is timed.
+
+        `_resolve` imports OpenCV, which takes about 2.7 s on a Jetson reading
+        from an SD card. Left to the first `run`, that one-time library load
+        lands inside a per-frame duration: the first published record reported
+        2.709 s of preprocessing against a steady-state 0.004 s, and the
+        outlier was mistaken for a real cost for most of an evening.
+
+        The engine's warmup runs are discarded for the same reason. This is
+        the same cost, in a stage that was not getting the same treatment.
+        """
+        return self._resolve()
+
     # -- the stage ---------------------------------------------------------
 
     def run(self, payload: Any) -> PreprocessResult:
