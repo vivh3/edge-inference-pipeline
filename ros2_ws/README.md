@@ -35,12 +35,12 @@ end-to-end run, but the 2.2B stays.
 Thin wrappers over `inference/` and `telemetry/`, which already hold all the
 behaviour. A node should own message conversion and nothing else.
 
-| node | wraps |
-|---|---|
-| `capture_node` | `inference.capture.WebcamSource` |
-| `inference_node` | `inference.pipeline.Pipeline` (admission policy, engine, validation) |
-| `consumer_node` | mock consumer: logs the published JSON record |
-| `telemetry_node` | `telemetry.metrics.Metrics` snapshots on a timer |
+| node | wraps | state |
+|---|---|---|
+| `capture_node` | `inference.capture.WebcamSource` | **written, not yet run** |
+| `inference_node` | `inference.pipeline.Pipeline` (admission policy, engine, validation) | planned |
+| `consumer_node` | mock consumer: logs the published JSON record | planned |
+| `telemetry_node` | `telemetry.metrics.Metrics` snapshots on a timer | planned |
 
 ## The one QoS decision
 
@@ -66,3 +66,108 @@ Timebox: a few hours. This is one decision, not a DDS study.
 
 Lifecycle nodes, node composition, custom executors, custom message types
 beyond what the pipeline needs, and any second middleware configuration.
+
+## Why there is a custom message
+
+`StampedFrame` exists because two pieces of trusted metadata have nowhere
+standard to go.
+
+ROS 2 removed `Header.seq`, so the capture sequence number has no home. And
+`header.stamp` carries the ROS clock, which is system time by default, while
+every duration in this project is a difference of CLOCK_MONOTONIC readings so
+that an NTP step mid-inference cannot corrupt a latency or make it negative.
+`StampedFrame` therefore carries `frame_id` and `capture_ts_monotonic`
+alongside the image, and fills `header` conventionally for tooling that
+expects it.
+
+This is the one custom message. The exclusions above still hold.
+
+## Build and run
+
+`colcon` is not part of `ros-humble-ros-base`:
+
+```bash
+sudo apt install -y python3-colcon-common-extensions
+```
+
+**Build with the venv active, and source ROS before it.** `ament_python`
+bakes whichever `python3` is on PATH into each node's launcher shebang, and
+only the venv's interpreter can see all three of ROS, torch and the core at
+once. It was created with `--system-site-packages` precisely so it can; system
+Python has no torch, which `inference_node` needs. Building with the venv
+deactivated produces launchers that re-exec `/usr/bin/python3` and fail on
+`No module named 'inference'` no matter what is activated afterwards.
+
+```bash
+cd ~/edge-inference-pipeline
+source .venv/bin/activate
+pip install -e .                      # makes inference/ and telemetry/ importable
+
+source /opt/ros/humble/setup.bash     # ROS first
+source .venv/bin/activate             # then the venv, so python3 resolves to it
+cd ros2_ws
+colcon build
+source install/setup.bash
+
+ros2 run edge_perception capture_node
+```
+
+If a build ever picked up the wrong interpreter, `rm -rf build install log`
+before rebuilding; the shebangs are written at install time and are not
+regenerated otherwise.
+
+In a second shell, with the same setups sourced:
+
+```bash
+ros2 topic hz /frames          # should sit near the measured 30.027 fps
+ros2 topic echo /frames --field frame_id --once
+ros2 topic info /frames -v     # confirms the QoS actually in force
+```
+
+`ros2 topic hz` is the check that matters. The camera measured 30.027 fps in
+Gate 1, and anything well below that means the publish path is now the
+bottleneck rather than the camera.
+
+## What the first run found
+
+`capture_node` throttled the camera from 30.027 fps to 5.64. `frame_id` is
+what made it visible: a probe subscribing to `/frames` can compare how many
+frames capture *published* against how many *arrived*, which `ros2 topic hz`
+cannot do, because it only ever sees what arrived.
+
+Splitting the sink into stages put the cost somewhere nobody would have
+guessed:
+
+| | before | after |
+| --- | --- | --- |
+| convert to `sensor_msgs/Image` | 173.2 ms | **0.9 ms** |
+| publish | 0.3 ms | 1.0 ms |
+| inter-frame interval | 176.7 ms | **33.3 ms** |
+| effective capture rate | 5.64 fps | **30.03 fps** |
+
+"27 MB/s is too much for the middleware" was a plausible theory and wrong by
+two orders of magnitude: publishing cost 0.3 ms. The time was in a single
+assignment. rclpy's generated setter for a `uint8[]` field short-circuits when
+handed an `array.array` and otherwise validates every element in a Python loop
+under `__debug__` -- 921,600 of them per 640x480 bgr8 frame.
+
+The node now costs 1.9 ms of a 33.3 ms frame budget, and 33.3 ms is 30.03 fps,
+which is the camera's measured 30.027 fps reproduced inside ROS.
+
+This is the same shape as the capture-buffer bug in Gate 1: work placed where
+it silently degrades capture, with nothing reporting the degradation. Both
+were found by measuring frames published against frames delivered, and neither
+would have appeared in a test.
+
+## What to watch next
+
+A 640x480 bgr8 frame is 921,600 bytes, so 30 fps is about 27 MB/s crossing the
+middleware. Intra-host that should use shared memory rather than the network
+stack, but it is unverified. If `ros2 topic hz` comes in low, publishing
+compressed frames and decoding in the subscriber is the obvious next
+experiment -- and it would move the JPEG decode cost from `capture_node` into
+the node that already pays for preprocessing.
+
+Memory: four nodes measured 108 MB empty, leaving roughly 350 MB with the
+2.2B model loaded. `capture_node` holds cv2 and frame buffers on top of that,
+so watch `jtop` during the first end-to-end run.
