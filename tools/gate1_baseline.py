@@ -80,6 +80,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--model", help="Hugging Face model id, e.g. org/model")
     p.add_argument("--image", required=True, help="one representative photo")
+    p.add_argument("--revision", help="commit SHA to pin; a branch name is not a version")
     p.add_argument("--runs", type=int, default=20, help="measured runs after warmup")
     p.add_argument("--dtype", default="float16")
     p.add_argument("--device", default="cuda")
@@ -97,7 +98,8 @@ def main() -> int:
         engine = MockEngine(mean_latency=0.45, sigma=0.2, seed=0)
         image = None
     else:
-        engine = VlmEngine(args.model, device=args.device, dtype=args.dtype)
+        engine = VlmEngine(args.model, device=args.device, dtype=args.dtype,
+                           revision=args.revision)
         image = load_image(args.image)
 
     # Warmup is discarded: the first invocations pay for CUDA context creation,
