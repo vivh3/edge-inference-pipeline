@@ -455,16 +455,31 @@ Measured at 15W on an Orin Nano Super, one probe frame repeated 20 times:
 
 | quantity | SmolVLM2-2.2B | SmolVLM2-500M |
 | --- | --- | --- |
-| inference latency p50 | 4907 ms | 3065 ms |
-| inference latency p99 | 4951 ms | 3090 ms |
+| inference latency p50 | 4930 ms | 3094 ms |
+| inference latency max | 6134 ms | 3112 ms |
 | output tokens per result | 19 | 19 |
-| valid on the repeated frame | 20/20 | 0/20 |
-| failure kind | none | `unusable_semantics` |
-| system memory available, steady | 450 MB | 3149 MB |
+| **contract rate over 10 probe frames** | **7/10** | **0/10** |
+| failure kinds | 3 `unusable_semantics` | 4 `unusable_semantics`, 6 `schema_violation` |
+| valid on one frame repeated 20x | 20/20 | 0/20 |
+| system memory available, steady | 519 MB | 3819 MB |
 | process memory (jtop) | 1.2 GB CPU + 5.1 GB GPU | 2.2 GB CPU + 1.7 GB GPU |
 | swap in use during inference | 369 MB | 63 MB |
 | mean VDD_IN | 15.1 - 16.4 W | 12.1 W |
-| **contract rate over the probe set** | `TBD` | `TBD` |
+
+**Selected: SmolVLM2-2.2B-Instruct.** It is the only one that perceives. Over
+the probe set it returned `clear`/`none`, `blocked`/`left`,
+`blocked`/`front_center` and `blocked`/`front_left` on different frames, so
+the answers track the scene.
+
+The 500M returned `obstacle_location: "left"` on all ten frames regardless of
+content, and six of those put `"none"` in `path_status`, which is not in that
+field's vocabulary at all but is in the other field's. It confuses the two
+fields and emits a near-constant answer. No prompt change fixes a model that
+gives the same reply to an empty floor and a blocked doorway.
+
+The cost of that choice is 519 MB of headroom against 3819 MB, and swapping
+during inference. That is a Gate 2 constraint to manage, not a reason to ship
+a model that cannot see.
 
 4.4x fewer parameters bought 1.6x less time. If decode dominated, latency would
 scale roughly with parameter count. It does not, so a large fixed cost sits in
@@ -472,17 +487,23 @@ front of decode, and vision encoding in prefill is the candidate. That is
 independent support for the section 11 hypothesis, from an experiment run for
 another reason.
 
-The 500M emitted `{"path_status": "unknown", "obstacle_location": "left"}` on
-every run. That is well-formed JSON with both keys and both values inside the
-closed vocabulary, rejected by the cross-field rule that `unknown` means
-unknown in both fields. The rule is not arbitrary: the frozen prompt says
-`Use "unknown" for both fields if the image is too unclear to judge`, so the
-rule enforces an instruction the model was given and did not follow. The 2.2B
-followed it on the same frame.
+**The invalid-output rate is 30%**, and it is the first real number for a line
+the README has carried as `TBD`. All three failures are the same shape:
+`blocked` with `obstacle_location: "none"`, meaning the model saw an
+obstruction and would not localise it. The prompt says `Use "none" for
+obstacle_location only when path_status is "clear"`, so the rule enforces a
+stated instruction that the model broke on three frames out of ten.
 
 Do not relax a rule to make a model pass. That fits the contract to the model
 and destroys what the contract is for. If a rule is wrong it is wrong on its
-own merits, and the 2.2B's output is the evidence either way.
+own merits, and the model's output on the other seven frames is the evidence
+either way.
+
+A 30% invalid rate is not a disappointing result. It is the result: a real
+model on real frames produces unusable output roughly a third of the time,
+and the system classifies each one with a reason rather than publishing it as
+perception. A pipeline that could not tell the difference would have reported
+ten confident answers.
 
 Written to `results/baseline/model-*.json`.
 

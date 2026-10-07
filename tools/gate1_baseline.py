@@ -173,16 +173,25 @@ def main() -> int:
     steady = snapshot("steady state")
 
     def stats(values):
+        """Percentiles, with p99 omitted when it would only be the maximum.
+
+        Nearest-rank p99 of n samples picks rank ceil(0.99n), which is n
+        itself for any n below 100. Reporting "p99" from 20 runs reports the
+        single slowest run under a name that implies a tail, and one warmup
+        effect or scheduler hiccup becomes the headline.
+        """
         if not values:
             return None
-        return {
+        out = {
             "n": len(values),
             "mean": round(sum(values) / len(values), 4),
             "p50": round(percentile(values, 50), 4),
             "p90": round(percentile(values, 90), 4),
-            "p99": round(percentile(values, 99), 4),
             "max": round(max(values), 4),
         }
+        if len(values) >= 100:
+            out["p99"] = round(percentile(values, 99), 4)
+        return out
 
     valid = outcomes.get("none", 0)
     report = {
@@ -223,7 +232,12 @@ def main() -> int:
     headroom = steady["system_available_mb"]
     print("\n" + "=" * 62)
     print(f"  inference latency p50   {lat['p50'] * 1000:.0f} ms")
-    print(f"  inference latency p99   {lat['p99'] * 1000:.0f} ms")
+    print(f"  inference latency p90   {lat['p90'] * 1000:.0f} ms")
+    print(f"  inference latency max   {lat['max'] * 1000:.0f} ms")
+    if "p99" in lat:
+        print(f"  inference latency p99   {lat['p99'] * 1000:.0f} ms")
+    else:
+        print(f"  (no p99: {lat['n']} runs, where p99 is just the maximum)")
     if report["output_tokens"]:
         print(f"  output tokens p50       {report['output_tokens']['p50']:.0f}")
     print(f"  same image, {args.runs} runs    {valid}/{args.runs} valid "
