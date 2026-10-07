@@ -36,7 +36,7 @@ def main() -> int:
         return 1
 
     failures = []
-    for label, captured, published, drop, p50, p99, maximum in rows:
+    for label, captured, published, drop, p50, p90, maximum in rows:
         path = os.path.join(ROOT, "results", "simulated", POLICY_BY_LABEL[label], "summary.json")
         with open(path) as fh:
             summary = json.load(fh)
@@ -46,7 +46,7 @@ def main() -> int:
             ("published", int(published), summary["results_published"]),
             ("drop rate", float(drop), round(summary["drop_rate"] * 100, 1)),
             ("result age p50", float(p50), round(age["p50"], 3)),
-            ("result age p99", float(p99), round(age["p99"], 3)),
+            ("result age p90", float(p90), round(age["p90"], 3)),
             ("result age max", float(maximum), round(age["max"], 3)),
         ]:
             if in_readme != in_file:

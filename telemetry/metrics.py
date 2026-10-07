@@ -111,18 +111,28 @@ class Summary:
     notes: Dict[str, object] = field(default_factory=dict)
 
 
+# Below this many samples, nearest-rank p99 picks rank ceil(0.99n) == n, which
+# is the maximum. Reporting it as "p99" names the single slowest result a tail
+# statistic, and one scheduler hiccup becomes the headline. Under heavy
+# overload a run publishes few results by design, so this is the normal case
+# here rather than an edge one.
+_P99_MIN_SAMPLES = 100
+
+
 def _stats(values: List[float]) -> Dict[str, Optional[float]]:
     # None, not NaN: bare NaN is not valid JSON and json.dump emits it anyway.
     if not values:
-        return {"n": 0, "mean": None, "p50": None, "p90": None, "p99": None, "max": None}
-    return {
+        return {"n": 0, "mean": None, "p50": None, "p90": None, "max": None}
+    out = {
         "n": len(values),
         "mean": sum(values) / len(values),
         "p50": percentile(values, 50),
         "p90": percentile(values, 90),
-        "p99": percentile(values, 99),
         "max": max(values),
     }
+    if len(values) >= _P99_MIN_SAMPLES:
+        out["p99"] = percentile(values, 99)
+    return out
 
 
 # --------------------------------------------------------------------------
