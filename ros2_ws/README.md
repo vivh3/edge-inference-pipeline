@@ -109,8 +109,15 @@ cd ros2_ws
 colcon build
 source install/setup.bash
 
-ros2 run edge_perception capture_node
+python3 -m edge_perception.capture_node
 ```
+
+Run nodes with `python3 -m`, not `ros2 run`. `ament_python` bakes a shebang
+into each launcher from whichever interpreter built the package, and colcon
+from apt runs under `/usr/bin/python3` regardless of what is active, so
+`ros2 run` launches a node under an interpreter that cannot see the venv.
+`python3 -m` uses whatever is active, which is the only interpreter that sees
+ROS, torch and the core at once.
 
 If a build ever picked up the wrong interpreter, `rm -rf build install log`
 before rebuilding; the shebangs are written at install time and are not
@@ -158,6 +165,40 @@ This is the same shape as the capture-buffer bug in Gate 1: work placed where
 it silently degrades capture, with nothing reporting the degradation. Both
 were found by measuring frames published against frames delivered, and neither
 would have appeared in a test.
+
+## The subscriber saturates before inference exists
+
+With `capture_node` publishing at a steady 30 fps and a subscriber that does
+nothing but increment a counter:
+
+| elapsed | received | published | lost in the middleware | probe RSS |
+| --- | --- | --- | --- | --- |
+| 10 s | 273 | 297 | 8.4% | - |
+| 30 s | 681 | 897 | 24.2% | 57 MB |
+| 60 s | 1276 | 1797 | 29.0% | 57 MB |
+| 70 s | 1530 | 2097 | 27.1% | - |
+
+RSS is flat and the loss plateaus near 28%, so this is CPU saturation rather
+than a leak: deserialising 30 x 921,600 bytes per second is more than six A78
+cores at 15W will do alongside the publisher. Capture itself never wavered,
+publishing exactly 300 frames per 10 s throughout.
+
+**Those 28% are lost silently.** Nothing in ROS counts them, and `ros2 topic
+hz` would report a healthy-looking 21 Hz with no hint that 500 frames had
+vanished. Only `frame_id` exposes it, by letting a subscriber compare what was
+published against what arrived.
+
+That has a consequence for the telemetry. This project computes drop rate
+against frames captured, and once capture and inference are separate
+processes, frames can disappear before the admission policy ever sees them.
+`inference_node` therefore has to report two different losses under two
+different names: frames the middleware dropped, recoverable from gaps in
+`frame_id`, and frames the admission policy dropped on purpose. Reporting one
+number would attribute the middleware's losses to a design decision.
+
+Whether to reduce the 28% at all is a separate question. Under overload
+`inference_node` will drop ~99% of frames by design, so middleware loss may be
+irrelevant to the result. Measure it in place before optimising it.
 
 ## What to watch next
 
