@@ -362,9 +362,19 @@ python3 tools/capture_probe_set.py --count 20 --interval 4
 
 It counts down between shots so you can move the camera or the scene, and
 records each frame's mean brightness so an unusable set is caught at capture
-time rather than after a model comparison. Mix easy against genuinely
-ambiguous: a clear hallway, a doorway, a bag on the floor, a dark room, a
-blank wall. Twenty easy frames distinguish nothing.
+time rather than after a model comparison.
+
+Composition matters more than count; ten varied frames beat twenty easy ones.
+Cover the clear case, each obstacle location in the vocabulary, two scenes
+where `unknown` is the right answer (a blank wall at close range, a dark
+corner), and a couple that are genuinely arguable. Without the `unknown`
+frames there is no way to tell a calibrated model from a confident one, which
+is most of what this set is for.
+
+At ten frames, one frame of disagreement between two candidates is noise. That
+is enough to answer the Gate 1 question, which is whether a model clears the
+output contract at all. Capture more only if two candidates come out close
+enough that the set has to choose between them.
 
 Shooting these on a phone would compare candidates on pictures the pipeline
 never sees: different sensor, resolution, JPEG encoder and colour handling.
