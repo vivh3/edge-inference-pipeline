@@ -133,9 +133,17 @@ Confirm before continuing:
 - [ ] GPU clock readable
 - [ ] memory total and used readable
 
-Note the idle memory figure. The desktop session costs about 2.3 GB of the
-7.4 GB on an 8 GB board, and GPU allocations come out of that same pool. There
-is no separate VRAM. Section 9 says what to do about it.
+Note the idle memory figure. GPU allocations come out of the same pool as the
+OS; there is no separate VRAM. Measured on this board, of 7619 MB total:
+
+| state | used | available |
+| --- | --- | --- |
+| desktop running | ~2300 MB | ~5100 MB |
+| `multi-user.target` | 380 MB | 7010 MB |
+
+Run headless before loading a model. `sudo systemctl set-default
+multi-user.target`, and `graphical.target` to put it back. Confirm SSH works
+first: a headless board you cannot reach needs a monitor to recover.
 
 This repo reads the INA3221 rails directly from `/sys` so power lands in the
 same CSV row as the latency measurement, rather than in a separate tool's
@@ -259,6 +267,14 @@ does not honour the pixel format request: it logs `unhandled property` and may
 fail to start a pipeline at all. The capture code names the V4L2 backend
 explicitly for that reason. If `measure_camera.py` prints GStreamer warnings,
 that is what is happening; `--backend v4l2` is already the default.
+
+**Exposure is left on auto.** `v4l2-ctl --set-ctrl` changes are runtime state
+and reset on reboot, so pinning exposure would mean a setup step to forget or
+a service to maintain. It buys nothing here: the frame rate was limited by
+buffer starvation, not exposure, so exposure is not a timing variable and no
+latency measurement depends on it. Auto also adapts as the camera moves, which
+is what a varied probe set wants. Set it manually only if a measurement turns
+out to depend on it, and write down that it did.
 
 MJPG costs a JPEG decode per frame. That decode lands in preprocessing, where
 it is measured, rather than disappearing into the queue wait. The Orin has
