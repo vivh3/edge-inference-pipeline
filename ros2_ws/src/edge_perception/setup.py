@@ -19,6 +19,7 @@ setup(
     entry_points={
         "console_scripts": [
             "capture_node = edge_perception.capture_node:main",
+            "inference_node = edge_perception.inference_node:main",
         ],
     },
 )

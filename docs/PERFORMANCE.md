@@ -113,11 +113,51 @@ Full comparison in the README. Run on hardware with:
 python3 tools/run_overload_sim.py --policies latest fifo_bounded fifo_unbounded
 ```
 
-| policy | drop rate | result age p50 | result age p99 | result age max |
+| policy | drop rate | result age p50 | result age p90 | result age max |
 |---|---|---|---|---|
 | `latest` | `TBD` | `TBD` | `TBD` | `TBD` |
 | `fifo_bounded(8)` | `TBD` | `TBD` | `TBD` | `TBD` |
 | `fifo_unbounded` | `TBD` | `TBD` | `TBD` | `TBD` |
+
+## Gate 2 end to end: the budget is missed, and the decomposition says where
+
+The full graph runs on the Jetson -- camera, ROS 2, admission policy,
+SmolVLM2-2.2B, validation, JSON out -- at a 99.4% policy drop rate, which is
+the 148x overload ratio arriving as predicted. One published record:
+
+| stage | measured | expected |
+| --- | --- | --- |
+| queue age | 2.842 s | one frame interval |
+| of which preprocess | **2.818 s** | ~0.003 s |
+| inference | 6.454 s | 4.930 s (Gate 1 baseline) |
+| post-processing | 0.001 s | small |
+| **result age** | **9.298 s** | budget 5.5 s |
+
+Preprocessing is a 640x480 to 448x448 resize and a colour conversion. It is
+taking three seconds, and inference is 30% slower than the same model on the
+same image measured standalone.
+
+### Two hypotheses, both killed by measurement
+
+**GIL contention** between the executor thread deserialising messages and the
+pipeline's worker thread. Killed twice: halving the publish rate from 30 to
+15 Hz moved preprocess only 3.219 s to 2.818 s, and `vmstat` shows the CPU
+82-93% idle. Contention burns CPU in the thread holding the lock.
+
+**Memory pressure.** Swap is in use -- `swpd` grew 301 MB to 398 MB and `so`
+peaked at 12.3 MB/s while the model loaded -- but in steady state `si` and
+`so` are single digits and `wa` is 0. The board is not paging during
+inference.
+
+So the worker thread is spending seconds blocked while the CPU is idle,
+nothing pages, and nothing holds the GIL. **It is waiting on something, and
+guessing from the outside has stopped being productive.** This is what the
+section below exists for: NVTX ranges around the stages, `nsys`, and a look
+at where the thread actually is. The decomposition has done its job by
+localising the problem to a stage that should cost milliseconds.
+
+Worth noting what a single end-to-end latency number would have shown here:
+9.3 seconds, and nothing else.
 
 ## The bottleneck investigation (Gate 3)
 
