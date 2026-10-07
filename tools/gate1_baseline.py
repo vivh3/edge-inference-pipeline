@@ -79,7 +79,12 @@ def load_image(path: str):
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--model", help="Hugging Face model id, e.g. org/model")
-    p.add_argument("--image", required=True, help="one representative photo")
+    p.add_argument("--image", required=True,
+                   help="one photo, repeated --runs times, for the latency distribution")
+    p.add_argument("--probe-dir",
+                   help="directory of probe frames, each run once, for the contract "
+                        "rate. Repeating one image measures determinism, not whether "
+                        "the model holds the contract across scenes.")
     p.add_argument("--revision", help="commit SHA to pin; a branch name is not a version")
     p.add_argument("--runs", type=int, default=20, help="measured runs after warmup")
     p.add_argument("--dtype", default="float16")
@@ -131,6 +136,40 @@ def main() -> int:
             samples.append({"text": raw.text[:300], "failure": report.failure.value})
         print(f"  run {i + 1:3d}/{args.runs}  {latency * 1000:7.1f} ms  {report.failure.value}", flush=True)
 
+    # Contract rate over the probe set. The loop above holds the image
+    # constant so the latency distribution is clean, which makes its outcome
+    # counts twenty deterministic repeats of one scene rather than twenty
+    # tests. One pass over varied frames is the honest contract measurement.
+    probe = {}
+    if args.probe_dir and not args.mock:
+        frames = sorted(
+            os.path.join(args.probe_dir, f)
+            for f in os.listdir(args.probe_dir)
+            if f.lower().endswith((".jpg", ".jpeg", ".png"))
+        )
+        print(f"\ncontract over {len(frames)} probe frames ...", flush=True)
+        per_frame, probe_outcomes = [], Counter()
+        for path in frames:
+            raw = engine.infer(load_image(path))
+            _, rep = validate(raw.text)
+            probe_outcomes[rep.failure.value] += 1
+            per_frame.append({
+                "file": os.path.basename(path),
+                "failure": rep.failure.value,
+                "detail": rep.get("detail", ""),
+                "text": raw.text[:200],
+            })
+            print(f"  {os.path.basename(path):16} {rep.failure.value:20} {raw.text.strip()[:70]}",
+                  flush=True)
+        ok = probe_outcomes.get("none", 0)
+        probe = {
+            "frames": len(frames),
+            "valid": ok,
+            "valid_rate": (ok / len(frames)) if frames else 0.0,
+            "outcomes": dict(probe_outcomes),
+            "per_frame": per_frame,
+        }
+
     steady = snapshot("steady state")
 
     def stats(values):
@@ -167,6 +206,10 @@ def main() -> int:
         "memory": {"before_load": before, "after_load": loaded, "steady": steady},
         "power_rails": jetson_power_rail_names(),
         "sample_outputs": samples,
+        # Contract measured across scenes, when a probe set was given. The
+        # "contract" block above is one image repeated and says only whether
+        # the model is deterministic.
+        "probe_set": probe,
     }
     if args.mock:
         report["WARNING"] = "synthetic engine; these numbers measure nothing real"
@@ -183,7 +226,16 @@ def main() -> int:
     print(f"  inference latency p99   {lat['p99'] * 1000:.0f} ms")
     if report["output_tokens"]:
         print(f"  output tokens p50       {report['output_tokens']['p50']:.0f}")
-    print(f"  clears the contract     {valid}/{args.runs}  ({report['contract']['valid_rate'] * 100:.0f}%)")
+    print(f"  same image, {args.runs} runs    {valid}/{args.runs} valid "
+          f"(determinism, not generalisation)")
+    if probe:
+        print(f"  clears the contract     {probe['valid']}/{probe['frames']} probe frames  "
+              f"({probe['valid_rate'] * 100:.0f}%)")
+        if set(probe["outcomes"]) != {"none"}:
+            print(f"  probe failures          "
+                  f"{dict((k, v) for k, v in probe['outcomes'].items() if k != 'none')}")
+    else:
+        print("  no --probe-dir given, so contract rate is one scene only")
     if outcomes and set(outcomes) != {"none"}:
         print(f"  failures                {dict((k, v) for k, v in outcomes.items() if k != 'none')}")
     print(f"  memory headroom         {headroom:.0f} MB available of "

@@ -429,11 +429,20 @@ starts producing garbage.
 ## 9. Run the baseline
 
 ```bash
-python3 tools/gate1_baseline.py --model <org>/<model> --image photos/hallway.jpg --runs 20
+python3 tools/gate1_baseline.py --model <org>/<model> --revision <sha> \
+    --image results/probe/probe_00.jpg --runs 20 \
+    --probe-dir results/probe
 ```
 
-No camera, no pipeline, no ROS. One image, repeated, warmup discarded. This
-isolates the model's cost from everything else.
+No camera, no pipeline, no ROS, so the measurement is the model's cost and
+nothing else.
+
+The two flags answer different questions and must not be confused. `--image`
+with `--runs` repeats one scene, which keeps the input constant so the latency
+distribution is clean; under greedy decoding its validation outcomes are the
+same answer twenty times, so they measure determinism. `--probe-dir` runs each
+probe frame once, and that is the contract rate. Reporting "20/20 valid" from
+the repeated image would be reporting n=1 as n=20.
 
 The script reports memory at three points, before load, after load and warmup,
 and at steady state, because **weight size on disk is not runtime footprint**. A
@@ -442,19 +451,40 @@ cache, CUDA context, image tensors and the OS all share the same 8 GB, and
 physical memory on a Jetson is unified so there is no separate device pool to
 fall back on.
 
-| quantity | value |
-|---|---|
-| inference latency p50 / p90 / p99 | `TBD` |
-| output tokens per result | `TBD` |
-| **clears `validate()`** | `TBD` / 20 |
-| failure breakdown | `TBD` |
-| extraction rate | `TBD` |
-| total system memory | `TBD` |
-| free before load | `TBD` |
-| free at steady state | `TBD` |
-| mean power | `TBD` |
+Measured at 15W on an Orin Nano Super, one probe frame repeated 20 times:
 
-Written to `results/baseline/model.json`.
+| quantity | SmolVLM2-2.2B | SmolVLM2-500M |
+| --- | --- | --- |
+| inference latency p50 | 4907 ms | 3065 ms |
+| inference latency p99 | 4951 ms | 3090 ms |
+| output tokens per result | 19 | 19 |
+| valid on the repeated frame | 20/20 | 0/20 |
+| failure kind | none | `unusable_semantics` |
+| system memory available, steady | 450 MB | 3149 MB |
+| process memory (jtop) | 1.2 GB CPU + 5.1 GB GPU | 2.2 GB CPU + 1.7 GB GPU |
+| swap in use during inference | 369 MB | 63 MB |
+| mean VDD_IN | 15.1 - 16.4 W | 12.1 W |
+| **contract rate over the probe set** | `TBD` | `TBD` |
+
+4.4x fewer parameters bought 1.6x less time. If decode dominated, latency would
+scale roughly with parameter count. It does not, so a large fixed cost sits in
+front of decode, and vision encoding in prefill is the candidate. That is
+independent support for the section 11 hypothesis, from an experiment run for
+another reason.
+
+The 500M emitted `{"path_status": "unknown", "obstacle_location": "left"}` on
+every run. That is well-formed JSON with both keys and both values inside the
+closed vocabulary, rejected by the cross-field rule that `unknown` means
+unknown in both fields. The rule is not arbitrary: the frozen prompt says
+`Use "unknown" for both fields if the image is too unclear to judge`, so the
+rule enforces an instruction the model was given and did not follow. The 2.2B
+followed it on the same frame.
+
+Do not relax a rule to make a model pass. That fits the contract to the model
+and destroys what the contract is for. If a rule is wrong it is wrong on its
+own merits, and the 2.2B's output is the evidence either way.
+
+Written to `results/baseline/model-*.json`.
 
 **Time to first token** is reported separately if the runtime exposes it
 cleanly. It separates prefill (vision encoding, one pass) from decode
