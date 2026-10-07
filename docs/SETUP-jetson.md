@@ -186,7 +186,7 @@ cd edge-inference-pipeline
 
 sudo apt install -y python3-pytest     # the only dependency, and only to run the tests
 python3 -m pytest tests/ -q            # no GPU needed
-python3 tools/run_overload_sim.py --duration 12 --latency 0.4
+python3 tools/run_overload_sim.py --duration 12 --latency 0.4   # quick shape check
 ```
 
 Both should pass on a bare JetPack image: the core imports nothing outside the

@@ -133,13 +133,13 @@ def main() -> int:
 
     print()
     hdr = f"{'policy':16} {'captured':>9} {'published':>10} {'drop rate':>10} " \
-          f"{'result age p50':>15} {'p99':>9} {'max':>9} {'infer p50':>10}"
+          f"{'result age p50':>15} {'p90':>9} {'max':>9} {'infer p50':>10}"
     print(hdr)
     print("-" * len(hdr))
     for name, s in summaries.items():
         print(f"{name:16} {s['frames_captured']:9d} {s['results_published']:10d} "
               f"{s['drop_rate']*100:9.1f}% {s['result_age']['p50']:14.3f}s "
-              f"{s['result_age']['p99']:8.3f}s {s['result_age']['max']:8.3f}s "
+              f"{s['result_age']['p90']:8.3f}s {s['result_age']['max']:8.3f}s "
               f"{s['inference_latency']['p50']:9.3f}s")
     print(f"\nwrote {RESULTS_ROOT}/<policy>/{{results.csv,summary.json}} and comparison.json")
     print("reminder: synthetic engine. these are admission-policy results, not model performance.")
