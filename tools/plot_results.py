@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Plot the headline figure: result age over time, one line per admission policy.
 
-matplotlib is an optional dependency (`pip install -e '.[plot]'`).  The CSVs
-in results/ are the primary artifact; this only draws them, so a missing
-plotting library never blocks a run.
+matplotlib is optional (`pip install -e '.[plot]'`). The CSVs in results/ are
+the primary artifact and this only draws them, so a missing plotting library
+never blocks a run.
 
     python3 tools/plot_results.py results/simulated --out results/simulated/result_age.png
 """

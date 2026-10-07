@@ -1,21 +1,18 @@
 """Frozen generation policy.
 
-Everything in this file is held constant across every configuration that is
-ever compared -- baseline, optimised, FIFO, latest-frame.  It lives in one
-module so "was anything else different?" has a one-file answer.
+Held constant across every configuration that is ever compared: baseline,
+optimised, FIFO, latest-frame. One module, so "was anything else different?"
+has a one-file answer.
 
-The reason this matters: generative inference latency is dominated by how
-many tokens are produced.  A configuration that happens to emit a chattier
-answer will look slower, and the difference will be read as a system effect
-when it is a generation-policy artifact.  Fixing the prompt, the image
-resolution, the maximum output length, and the decoding strategy removes
-that confound.
+Generative latency is dominated by how many tokens come out. A configuration
+that emits a chattier answer looks slower, and that reads as a system effect
+when it is a generation artifact. Fixing the prompt, resolution, output length
+and decoding strategy removes the confound.
 
-Note the limit of the guarantee: GPU execution is not necessarily
-bit-deterministic even under greedy decoding with a fixed seed, because
-reduction orders in fused kernels can vary.  Minor output variation is
-expected and does not invalidate the timing work.  What is being controlled
-here is output *length* and generation policy, not bit-exact output.
+The guarantee has a limit. GPU execution is not bit-deterministic even under
+greedy decoding with a fixed seed, because reduction orders in fused kernels
+vary. What is controlled here is output length and generation policy, not
+bit-exact output.
 """
 
 from __future__ import annotations

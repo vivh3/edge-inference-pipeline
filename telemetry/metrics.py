@@ -18,15 +18,14 @@ Rates: drop rate is dropped / captured, against frames that actually arrived
 rather than a nominal 30 fps. Invalid-output rate is broken out by failure
 kind, because "8% invalid" and "8% timeouts" need different fixes.
 
-Frames admitted is deliberately not reported. Under latest-frame a frame can
-be admitted and then evicted before it runs, so the count means something
-different per policy and is not comparable across the policies being
-compared. Captured, dropped and published are unambiguous, and
-`dropped + published` accounts for every captured frame bar the one in
-flight.
+Frames admitted is not reported. Under latest-frame a frame can be admitted
+and then evicted before it runs, so the count means something different per
+policy and is not comparable across them. Captured, dropped and published are
+unambiguous, and `dropped + published` accounts for every captured frame bar
+the one in flight.
 
-Queue depth is not reported either: in a correct one-slot buffer it is 0 or 1
-and carries no information.
+Queue depth is not reported either: in a one-slot buffer it is 0 or 1 and
+carries no information.
 """
 
 from __future__ import annotations
@@ -43,7 +42,8 @@ from inference.schema import Failure
 
 __all__ = [
     "ResultRow", "Summary", "Metrics", "percentile",
-    "read_rss_bytes", "read_jetson_power_w", "jetson_power_rail_names",
+    "read_rss_bytes", "read_system_available_bytes",
+    "read_jetson_power_w", "jetson_power_rail_names",
 ]
 
 
@@ -79,6 +79,9 @@ class ResultRow:
     path_status: str
     obstacle_location: str
     rss_mb: float = 0.0
+    # On a Jetson this is the number that matters, not rss_mb. See
+    # read_system_available_bytes.
+    system_available_mb: float = 0.0
     power_w: float = 0.0
 
 
@@ -101,6 +104,7 @@ class Summary:
     post_processing: Dict[str, Optional[float]]
     result_age: Dict[str, Optional[float]]
     peak_rss_mb: float
+    min_system_available_mb: Optional[float]
     mean_power_w: float
     clock: str = CLOCK_NAME
     wall_clock_start: str = ""
@@ -129,10 +133,11 @@ def _stats(values: List[float]) -> Dict[str, Optional[float]]:
 def read_rss_bytes() -> int:
     """Resident set size of this process, from /proc. 0 if unavailable.
 
-    Deliberately process RSS and not "GPU memory used": on a Jetson the GPU
-    and CPU share one physical pool, so a separate device-memory figure would
-    invite double counting.  The headroom number that matters is total system
-    memory, sampled alongside this (see docs/SETUP-jetson.md).
+    RSS badly understates footprint on a Jetson. CUDA allocations live in the
+    pool the CPU shares but are not mapped into the process, so they never
+    appear here. Loading a 2.2B model at float16 moved RSS by 1.3 GB while
+    system available memory fell by 6.4 GB. Read this next to
+    read_system_available_bytes, and quote that one for headroom.
     """
     try:
         with open(f"/proc/{os.getpid()}/status", "r") as fh:
@@ -144,47 +149,93 @@ def read_rss_bytes() -> int:
     return 0
 
 
-# INA3221 exposes per-rail channels alongside an aggregate. Summing all of
-# them double-counts the total against its own constituents, so aggregates are
-# skipped by label.
-_AGGREGATE_RAIL = ("total", "sum", "all")
-_POWER_GLOB = "/sys/bus/i2c/drivers/ina3221*/*/hwmon/hwmon*/power*_input"
+def read_system_available_bytes() -> int:
+    """MemAvailable from /proc/meminfo. 0 if unavailable.
+
+    MemAvailable, not MemFree: reading several GB of weights off disk fills
+    the page cache, which is not free but is reclaimable, and MemFree would
+    report a shortage that does not exist.
+
+    This is the headroom figure on a board whose GPU and CPU share one pool.
+    It counts the model's device memory, which process RSS does not.
+    """
+    try:
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024
+    except OSError:
+        pass
+    return 0
 
 
-def _power_rails() -> List[Tuple[str, float]]:
-    """(label, watts) per Jetson power rail, aggregates excluded. Empty off-target."""
+# The Jetson's INA3221 monitor is exposed through hwmon, which reports bus
+# voltage (mV) and current (mA) on separate channels and leaves the
+# multiplication to the caller. There is no power channel to read.
+_HWMON_ROOT = "/sys/class/hwmon"
+_INA3221_NAME = "ina3221"
+
+# The rails overlap. On an Orin Nano, VDD_CPU_GPU_CV and VDD_SOC sit
+# downstream of VDD_IN. Summing all three counts the same current twice;
+# summing the children alone read 2.5 W against an actual 4.4 W at idle. So
+# the input rail is reported by itself, and the sum is a fallback for boards
+# that expose no input rail.
+_INPUT_RAIL_LABELS = ("vdd_in", "vdd_sys", "pom_5v_in")
+
+
+def _read_text(path: str) -> Optional[str]:
+    try:
+        with open(path) as fh:
+            return fh.read().strip()
+    except OSError:
+        return None
+
+
+def _read_int(path: str) -> Optional[int]:
+    try:
+        return int(_read_text(path))
+    except (TypeError, ValueError):
+        return None
+
+
+def _power_rails(root: str = _HWMON_ROOT) -> List[Tuple[str, float]]:
+    """(label, watts) per INA3221 channel. Empty off-target."""
     import glob
-    import os
 
     rails = []
-    for path in sorted(glob.glob(_POWER_GLOB)):
-        label_path = path.replace("_input", "_label")
-        try:
-            with open(path) as fh:
-                watts = int(fh.read().strip()) / 1000.0
-        except (OSError, ValueError):
+    for hwmon in sorted(glob.glob(os.path.join(root, "hwmon*"))):
+        if _read_text(os.path.join(hwmon, "name")) != _INA3221_NAME:
             continue
-        label = ""
-        if os.path.exists(label_path):
-            try:
-                with open(label_path) as fh:
-                    label = fh.read().strip()
-            except OSError:
-                pass
-        if any(word in label.lower() for word in _AGGREGATE_RAIL):
-            continue
-        rails.append((label or os.path.basename(path), watts))
+        for label_path in sorted(glob.glob(os.path.join(hwmon, "in*_label"))):
+            channel = os.path.basename(label_path)[len("in") : -len("_label")]
+            millivolts = _read_int(os.path.join(hwmon, "in%s_input" % channel))
+            milliamps = _read_int(os.path.join(hwmon, "curr%s_input" % channel))
+            if millivolts is None or milliamps is None:
+                # e.g. "sum of shunt voltages", a voltage channel with no
+                # current channel. Not a rail, so not a power reading.
+                continue
+            label = _read_text(label_path) or os.path.basename(label_path)
+            rails.append((label, millivolts * milliamps / 1_000_000.0))
+    return rails
+
+
+def _reported_rails(root: str = _HWMON_ROOT) -> List[Tuple[str, float]]:
+    """The rails that make up the reported figure: the input rail, or all."""
+    rails = _power_rails(root)
+    for rail in rails:
+        if rail[0].lower() in _INPUT_RAIL_LABELS:
+            return [rail]
     return rails
 
 
 def read_jetson_power_w() -> float:
-    """Module power in watts, summed over the non-aggregate rails. 0.0 off-target."""
-    return sum(watts for _, watts in _power_rails())
+    """Total module power in watts. 0.0 off-target."""
+    return sum(watts for _, watts in _reported_rails())
 
 
 def jetson_power_rail_names() -> List[str]:
-    """Labels of the rails being summed. Recorded once in the run notes."""
-    return [label for label, _ in _power_rails()]
+    """Labels of the rails behind the figure. Recorded once in the run notes."""
+    return [label for label, _ in _reported_rails()]
 
 
 # --------------------------------------------------------------------------
@@ -207,13 +258,14 @@ class Metrics:
         self.peak_rss = 0
         self.power_samples: List[float] = []
         # Resource reads touch /proc and /sys. Doing that per result puts two
-        # syscall-heavy reads on the worker thread between frames, which shows
-        # up as queue age on the next one. Sample on an interval instead and
-        # reuse the last value in between.
+        # syscall-heavy reads on the worker thread between frames, which show
+        # up as queue age on the next one. Sample on an interval instead.
         self.sample_interval = 1.0
         self._last_sample_ts = -1e9
         self._last_rss = 0
+        self._last_available = 0
         self._last_power = 0.0
+        self.min_available = 0
         self.start_ts = monotonic()
         self.start_wall = wall_clock_iso()
         self.first_capture_ts: Optional[float] = None
@@ -238,18 +290,19 @@ class Metrics:
 
     # -- publish side ------------------------------------------------------
 
-    def _sample_resources(self) -> Tuple[int, float]:
+    def _sample_resources(self) -> Tuple[int, int, float]:
         if not self.sample_resources:
-            return 0, 0.0
+            return 0, 0, 0.0
         now = monotonic()
         if now - self._last_sample_ts >= self.sample_interval:
             self._last_sample_ts = now
             self._last_rss = read_rss_bytes()
+            self._last_available = read_system_available_bytes()
             self._last_power = read_jetson_power_w()
-        return self._last_rss, self._last_power
+        return self._last_rss, self._last_available, self._last_power
 
     def on_publish(self, result) -> ResultRow:
-        rss, power = self._sample_resources()
+        rss, available, power = self._sample_resources()
         v = result.validation
         row = ResultRow(
             frame_id=result.frame_id,
@@ -268,6 +321,7 @@ class Metrics:
             path_status=result.semantic.get("path_status", "unknown"),
             obstacle_location=result.semantic.get("obstacle_location", "unknown"),
             rss_mb=rss / 1e6,
+            system_available_mb=available / 1e6,
             power_w=power,
         )
         with self._lock:
@@ -276,6 +330,10 @@ class Metrics:
             if row.extracted:
                 self.extracted_count += 1
             self.peak_rss = max(self.peak_rss, rss)
+            if available:
+                self.min_available = (
+                    available if not self.min_available else min(self.min_available, available)
+                )
             if power:
                 self.power_samples.append(power)
         return row
@@ -291,6 +349,7 @@ class Metrics:
             extracted = self.extracted_count
             intervals = list(self.capture_intervals)
             peak_rss = self.peak_rss
+            min_available = self.min_available
             power = list(self.power_samples)
             first_cap = self.first_capture_ts
             last_cap = self.last_capture_ts
@@ -319,6 +378,8 @@ class Metrics:
             post_processing=_stats([r.post_processing for r in rows]),
             result_age=_stats([r.result_age for r in rows]),
             peak_rss_mb=peak_rss / 1e6,
+            # The low-water mark, because headroom is about the worst moment.
+            min_system_available_mb=(min_available / 1e6) if min_available else None,
             mean_power_w=(sum(power) / len(power)) if power else 0.0,
             wall_clock_start=self.start_wall,
             notes=dict(notes or {}),

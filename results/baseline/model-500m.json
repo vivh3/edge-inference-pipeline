@@ -1,0 +1,154 @@
+{
+  "wall_clock": "2026-10-07T07:48:26.271Z",
+  "clock": "time.monotonic (CLOCK_MONOTONIC)",
+  "model": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+  "device": "cuda",
+  "dtype": "float16",
+  "image": "probe_00.jpg",
+  "generation_policy": {
+    "prompt_sha256_prefix": "3b0badbc7204",
+    "prompt_chars": 382,
+    "image_resolution": "448x448",
+    "max_new_tokens": 48,
+    "decoding": "greedy",
+    "seed": 0,
+    "warmup_runs": 5
+  },
+  "runs": 20,
+  "inference_latency_s": {
+    "n": 20,
+    "mean": 3.0957,
+    "p50": 3.0936,
+    "p90": 3.1083,
+    "p99": 3.1115,
+    "max": 3.1115
+  },
+  "time_to_first_token_s": null,
+  "output_tokens": {
+    "n": 20,
+    "mean": 19.0,
+    "p50": 19.0,
+    "p90": 19.0,
+    "p99": 19.0,
+    "max": 19.0
+  },
+  "contract": {
+    "valid": 0,
+    "valid_rate": 0.0,
+    "outcomes": {
+      "unusable_semantics": 20
+    },
+    "extraction_rate": 0.0
+  },
+  "memory": {
+    "before_load": {
+      "stage": "before model load",
+      "process_rss_mb": 13.4,
+      "system_available_mb": 5983.0,
+      "system_total_mb": 7619.8,
+      "power_w": 5.8
+    },
+    "after_load": {
+      "stage": "after load + warmup",
+      "process_rss_mb": 1679.3,
+      "system_available_mb": 3823.9,
+      "system_total_mb": 7619.8,
+      "power_w": 8.56
+    },
+    "steady": {
+      "stage": "steady state",
+      "process_rss_mb": 1683.0,
+      "system_available_mb": 3819.3,
+      "system_total_mb": 7619.8,
+      "power_w": 8.56
+    }
+  },
+  "power_rails": [
+    "VDD_IN"
+  ],
+  "sample_outputs": [
+    {
+      "text": " {\"path_status\": \"unknown\", \"obstacle_location\": \"left\"}",
+      "failure": "unusable_semantics"
+    },
+    {
+      "text": " {\"path_status\": \"unknown\", \"obstacle_location\": \"left\"}",
+      "failure": "unusable_semantics"
+    },
+    {
+      "text": " {\"path_status\": \"unknown\", \"obstacle_location\": \"left\"}",
+      "failure": "unusable_semantics"
+    }
+  ],
+  "probe_set": {
+    "frames": 10,
+    "valid": 0,
+    "valid_rate": 0.0,
+    "outcomes": {
+      "unusable_semantics": 4,
+      "schema_violation": 6
+    },
+    "per_frame": [
+      {
+        "file": "probe_00.jpg",
+        "failure": "unusable_semantics",
+        "detail": "path_status=unknown with obstacle_location='left'",
+        "text": " {\"path_status\": \"unknown\", \"obstacle_location\": \"left\"}"
+      },
+      {
+        "file": "probe_01.jpg",
+        "failure": "unusable_semantics",
+        "detail": "path_status=unknown with obstacle_location='left'",
+        "text": " {\"path_status\": \"unknown\", \"obstacle_location\": \"left\"}"
+      },
+      {
+        "file": "probe_02.jpg",
+        "failure": "unusable_semantics",
+        "detail": "path_status=unknown with obstacle_location='left'",
+        "text": " {\"path_status\": \"unknown\", \"obstacle_location\": \"left\"}"
+      },
+      {
+        "file": "probe_03.jpg",
+        "failure": "schema_violation",
+        "detail": "path_status='none' not in ['clear', 'blocked', 'unknown']",
+        "text": " {\"path_status\": \"none\", \"obstacle_location\": \"left\"}"
+      },
+      {
+        "file": "probe_04.jpg",
+        "failure": "unusable_semantics",
+        "detail": "path_status=unknown with obstacle_location='left'",
+        "text": " {\"path_status\": \"unknown\", \"obstacle_location\": \"left\"}"
+      },
+      {
+        "file": "probe_05.jpg",
+        "failure": "schema_violation",
+        "detail": "path_status='none' not in ['clear', 'blocked', 'unknown']",
+        "text": " {\"path_status\": \"none\", \"obstacle_location\": \"left\"}"
+      },
+      {
+        "file": "probe_06.jpg",
+        "failure": "schema_violation",
+        "detail": "path_status='none' not in ['clear', 'blocked', 'unknown']",
+        "text": " {\"path_status\": \"none\", \"obstacle_location\": \"left\"}"
+      },
+      {
+        "file": "probe_07.jpg",
+        "failure": "schema_violation",
+        "detail": "path_status='none' not in ['clear', 'blocked', 'unknown']",
+        "text": " {\"path_status\": \"none\", \"obstacle_location\": \"left\"}"
+      },
+      {
+        "file": "probe_08.jpg",
+        "failure": "schema_violation",
+        "detail": "path_status='none' not in ['clear', 'blocked', 'unknown']",
+        "text": " {\"path_status\": \"none\", \"obstacle_location\": \"left\"}"
+      },
+      {
+        "file": "probe_09.jpg",
+        "failure": "schema_violation",
+        "detail": "path_status='none' not in ['clear', 'blocked', 'unknown']",
+        "text": " {\"path_status\": \"none\", \"obstacle_location\": \"left\"}"
+      }
+    ]
+  }
+}
