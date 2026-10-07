@@ -190,8 +190,8 @@ def main() -> int:
     print("=" * 62)
     print(f"\nwrote {args.out}")
     print("\nGate 1 passes when the contract rate is high and headroom is comfortable.")
-    print("The p50 above is what the Gate 2 performance budget gets set from --")
-    print("call it a budget, never an SLO: it derives from what this board can do,")
+    print("The p50 above is what the Gate 2 performance budget gets set from.")
+    print("Call it a budget, never an SLO: it derives from what this board can do,")
     print("not from a requirement.")
     return 0
 
