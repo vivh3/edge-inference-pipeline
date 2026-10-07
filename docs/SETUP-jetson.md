@@ -481,6 +481,10 @@ The cost of that choice is 519 MB of headroom against 3819 MB, and swapping
 during inference. That is a Gate 2 constraint to manage, not a reason to ship
 a model that cannot see.
 
+Measured since: four empty `rclpy` nodes cost 108 MB, so the planned node
+layout leaves roughly 350 MB with this model loaded. See
+[`ros2_ws/README.md`](../ros2_ws/README.md).
+
 4.4x fewer parameters bought 1.6x less time. If decode dominated, latency would
 scale roughly with parameter count. It does not, so a large fixed cost sits in
 front of decode, and vision encoding in prefill is the candidate. That is
