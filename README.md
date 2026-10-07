@@ -340,8 +340,8 @@ ros2_ws/       Gate 2: integration plumbing, a thin wrapper over the core
 |---|---|
 | Python (core) | 3.10+, standard library only |
 | JetPack / L4T | 6.2 / R36.4.3 |
-| model id + revision/SHA | `TBD` (Gate 1) |
-| model licence | `TBD`, and it will be public, permissively licensed, cited |
+| model id + revision/SHA | `HuggingFaceTB/SmolVLM2-2.2B-Instruct` @ `482adb5` |
+| model licence | Apache 2.0, [model card](https://huggingface.co/HuggingFaceTB/SmolVLM2-2.2B-Instruct) |
 | inference runtime | PyTorch 2.8.0, transformers 5.18.0 |
 | ROS 2 | Humble (Gate 2) |
 | power profile | `nvpmodel` mode 0 (15W), held for every measurement |
