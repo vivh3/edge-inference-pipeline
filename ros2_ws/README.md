@@ -84,15 +84,27 @@ This is the one custom message. The exclusions above still hold.
 
 ## Build and run
 
-The core is a normal Python package, so the nodes import it rather than
-vendoring it:
+`colcon` is not part of `ros-humble-ros-base`:
+
+```bash
+sudo apt install -y python3-colcon-common-extensions
+```
+
+**Build with the venv active, and source ROS before it.** `ament_python`
+bakes whichever `python3` is on PATH into each node's launcher shebang, and
+only the venv's interpreter can see all three of ROS, torch and the core at
+once. It was created with `--system-site-packages` precisely so it can; system
+Python has no torch, which `inference_node` needs. Building with the venv
+deactivated produces launchers that re-exec `/usr/bin/python3` and fail on
+`No module named 'inference'` no matter what is activated afterwards.
 
 ```bash
 cd ~/edge-inference-pipeline
 source .venv/bin/activate
 pip install -e .                      # makes inference/ and telemetry/ importable
 
-source /opt/ros/humble/setup.bash
+source /opt/ros/humble/setup.bash     # ROS first
+source .venv/bin/activate             # then the venv, so python3 resolves to it
 cd ros2_ws
 colcon build
 source install/setup.bash
@@ -100,7 +112,11 @@ source install/setup.bash
 ros2 run edge_perception capture_node
 ```
 
-In a second shell, with the same two setups sourced:
+If a build ever picked up the wrong interpreter, `rm -rf build install log`
+before rebuilding; the shebangs are written at install time and are not
+regenerated otherwise.
+
+In a second shell, with the same setups sourced:
 
 ```bash
 ros2 topic hz /frames          # should sit near the measured 30.027 fps
