@@ -1,62 +1,62 @@
 {
   "policy": "latest",
-  "duration_s": 241.42542219100005,
-  "frames_captured": 7197,
-  "frames_dropped": 7147,
-  "results_published": 49,
-  "drop_rate": 0.9930526608309017,
+  "duration_s": 240.13709439900413,
+  "frames_captured": 7155,
+  "frames_dropped": 7115,
+  "results_published": 39,
+  "drop_rate": 0.9944095038434662,
   "invalid_output_rate": 0.0,
   "extraction_rate": 0.0,
   "failures": {
-    "none": 49
+    "none": 39
   },
-  "capture_fps_measured": 29.986154802730436,
-  "publish_fps_measured": 0.20296122734429514,
+  "capture_fps_measured": 29.810133680709203,
+  "publish_fps_measured": 0.16240722866080343,
   "queue_age": {
-    "n": 49,
-    "mean": 0.017122210408179316,
-    "p50": 0.01747618799981865,
-    "p90": 0.030875260999891907,
-    "max": 0.03382463100001587
+    "n": 39,
+    "mean": 0.06570865402579493,
+    "p50": 0.01852256100391969,
+    "p90": 0.033825762002379633,
+    "max": 1.8518004619982094
   },
   "preprocess": {
-    "n": 49,
-    "mean": 1.7385836752844033e-05,
-    "p50": 1.925999868035433e-06,
-    "p90": 4.980000085197389e-06,
-    "max": 0.00035625100008473964
+    "n": 39,
+    "mean": 0.04749505433275585,
+    "p50": 1.8432001525070518e-05,
+    "p90": 3.24159991578199e-05,
+    "max": 1.8515618370001903
   },
   "inference_latency": {
-    "n": 49,
-    "mean": 4.925670068632636,
-    "p50": 4.921089099000028,
-    "p90": 5.082413240000051,
-    "max": 5.240920514999971
+    "n": 39,
+    "mean": 6.100375887640462,
+    "p50": 6.083520940002927,
+    "p90": 6.311345597001491,
+    "max": 6.47604477799905
   },
   "post_processing": {
-    "n": 49,
-    "mean": 0.00014265487755679083,
-    "p50": 0.00013009700001020974,
-    "p90": 0.00018642800000634452,
-    "max": 0.00041152000017063983
+    "n": 39,
+    "mean": 0.00045047248773372325,
+    "p50": 0.0004159399977652356,
+    "p90": 0.0006901500019012019,
+    "max": 0.0009308219960075803
   },
   "result_age": {
-    "n": 49,
-    "mean": 4.942934933918372,
-    "p50": 4.938714657999981,
-    "p90": 5.091767877999928,
-    "max": 5.266694893000022
+    "n": 39,
+    "mean": 6.166535014153991,
+    "p50": 6.122537288996682,
+    "p90": 6.360834798004362,
+    "max": 7.919437746997573
   },
-  "peak_rss_mb": 15.187968,
-  "min_system_available_mb": 16283.844608,
-  "mean_power_w": 0.0,
+  "peak_rss_mb": 119.373824,
+  "min_system_available_mb": 6375.604224,
+  "mean_power_w": 5.2124159999999975,
   "clock": "time.monotonic (CLOCK_MONOTONIC)",
-  "wall_clock_start": "2026-10-07T08:32:30.474Z",
+  "wall_clock_start": "2026-10-07T23:41:09.196Z",
   "notes": {
     "SIMULATED": "synthetic engine; service time is an input, not a measurement",
     "engine": {
       "engine": "mock",
-      "mean_latency_s": 4.93,
+      "mean_latency_s": 6.09,
       "sigma": 0.02,
       "faults": {
         "malformed": 0.0,
@@ -67,17 +67,17 @@
       },
       "note": "synthetic; not a measurement of any real model"
     },
-    "preprocess_backend": "passthrough",
+    "preprocess_backend": "opencv",
     "offered_fps": 30.0,
     "fifo_capacity": null,
     "frames_left_in_queue_at_stop": 1,
-    "overload_ratio": 147.9,
+    "overload_ratio": 182.7,
     "health": {
       "health": "healthy",
-      "seconds_since_publish": 0.0006374720001076639,
+      "seconds_since_publish": 0.008136680000461638,
       "admission_policy": "latest",
       "deadline_s": 15.0,
-      "preprocess_total_s": 0.0008519060008893575,
+      "preprocess_total_s": 1.8523071189774782,
       "consumer_errors": 0,
       "last_consumer_error": ""
     }
