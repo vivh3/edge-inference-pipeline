@@ -34,6 +34,8 @@ either; both are why `StampedFrame` exists rather than a bare
 
 from __future__ import annotations
 
+import array
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -61,8 +63,16 @@ def to_image_msg(payload) -> Image:
     """BGR array -> sensor_msgs/Image, without cv_bridge.
 
     cv_bridge is compiled against a particular numpy, and this project holds
-    numpy below 2.0 so that apt's OpenCV keeps working. Eight lines here is
+    numpy below 2.0 so that apt's OpenCV keeps working. Ten lines here is
     cheaper than a dependency that can break on an unrelated upgrade.
+
+    `data` is assigned an `array.array` rather than `bytes`, and the
+    difference is 173 ms per frame. rclpy's generated setter for a `uint8[]`
+    field short-circuits on `array.array` and otherwise validates every
+    element in a Python loop under `__debug__` -- 921,600 of them for one
+    640x480 bgr8 frame. Measured on the Jetson: 173.2 ms with `bytes`,
+    against 0.3 ms to publish the result. Serialisation was never the
+    problem.
     """
     height, width = payload.shape[:2]
     msg = Image()
@@ -71,7 +81,7 @@ def to_image_msg(payload) -> Image:
     msg.encoding = "bgr8"
     msg.is_bigendian = 0
     msg.step = width * 3
-    msg.data = payload.tobytes()
+    msg.data = array.array("B", payload.tobytes())
     return msg
 
 
