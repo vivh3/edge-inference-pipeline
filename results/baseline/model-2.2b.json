@@ -1,0 +1,154 @@
+{
+  "wall_clock": "2026-10-07T07:53:30.844Z",
+  "clock": "time.monotonic (CLOCK_MONOTONIC)",
+  "model": "HuggingFaceTB/SmolVLM2-2.2B-Instruct",
+  "device": "cuda",
+  "dtype": "float16",
+  "image": "probe_00.jpg",
+  "generation_policy": {
+    "prompt_sha256_prefix": "3b0badbc7204",
+    "prompt_chars": 382,
+    "image_resolution": "448x448",
+    "max_new_tokens": 48,
+    "decoding": "greedy",
+    "seed": 0,
+    "warmup_runs": 5
+  },
+  "runs": 20,
+  "inference_latency_s": {
+    "n": 20,
+    "mean": 4.9926,
+    "p50": 4.9301,
+    "p90": 4.9444,
+    "p99": 6.1337,
+    "max": 6.1337
+  },
+  "time_to_first_token_s": null,
+  "output_tokens": {
+    "n": 20,
+    "mean": 19.0,
+    "p50": 19.0,
+    "p90": 19.0,
+    "p99": 19.0,
+    "max": 19.0
+  },
+  "contract": {
+    "valid": 20,
+    "valid_rate": 1.0,
+    "outcomes": {
+      "none": 20
+    },
+    "extraction_rate": 0.0
+  },
+  "memory": {
+    "before_load": {
+      "stage": "before model load",
+      "process_rss_mb": 13.4,
+      "system_available_mb": 5985.0,
+      "system_total_mb": 7619.8,
+      "power_w": 7.07
+    },
+    "after_load": {
+      "stage": "after load + warmup",
+      "process_rss_mb": 1220.7,
+      "system_available_mb": 437.1,
+      "system_total_mb": 7619.8,
+      "power_w": 16.02
+    },
+    "steady": {
+      "stage": "steady state",
+      "process_rss_mb": 1213.3,
+      "system_available_mb": 518.6,
+      "system_total_mb": 7619.8,
+      "power_w": 15.59
+    }
+  },
+  "power_rails": [
+    "VDD_IN"
+  ],
+  "sample_outputs": [
+    {
+      "text": " {\"path_status\": \"clear\", \"obstacle_location\": \"none\"}",
+      "failure": "none"
+    },
+    {
+      "text": " {\"path_status\": \"clear\", \"obstacle_location\": \"none\"}",
+      "failure": "none"
+    },
+    {
+      "text": " {\"path_status\": \"clear\", \"obstacle_location\": \"none\"}",
+      "failure": "none"
+    }
+  ],
+  "probe_set": {
+    "frames": 10,
+    "valid": 7,
+    "valid_rate": 0.7,
+    "outcomes": {
+      "none": 7,
+      "unusable_semantics": 3
+    },
+    "per_frame": [
+      {
+        "file": "probe_00.jpg",
+        "failure": "none",
+        "detail": "",
+        "text": " {\"path_status\": \"clear\", \"obstacle_location\": \"none\"}"
+      },
+      {
+        "file": "probe_01.jpg",
+        "failure": "none",
+        "detail": "",
+        "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"left\"}"
+      },
+      {
+        "file": "probe_02.jpg",
+        "failure": "none",
+        "detail": "",
+        "text": " {\"path_status\": \"clear\", \"obstacle_location\": \"none\"}"
+      },
+      {
+        "file": "probe_03.jpg",
+        "failure": "unusable_semantics",
+        "detail": "path_status=blocked with no obstacle location",
+        "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"none\"}"
+      },
+      {
+        "file": "probe_04.jpg",
+        "failure": "none",
+        "detail": "",
+        "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"front_center\"}"
+      },
+      {
+        "file": "probe_05.jpg",
+        "failure": "none",
+        "detail": "",
+        "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"left\"}"
+      },
+      {
+        "file": "probe_06.jpg",
+        "failure": "unusable_semantics",
+        "detail": "path_status=blocked with no obstacle location",
+        "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"none\"}"
+      },
+      {
+        "file": "probe_07.jpg",
+        "failure": "unusable_semantics",
+        "detail": "path_status=blocked with no obstacle location",
+        "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"none\"}"
+      },
+      {
+        "file": "probe_08.jpg",
+        "failure": "none",
+        "detail": "",
+        "text": " {\"path_status\": \"clear\", \"obstacle_location\": \"none\"}"
+      },
+      {
+        "file": "probe_09.jpg",
+        "failure": "none",
+        "detail": "",
+        "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"front_left\"}"
+      }
+    ]
+  }
+}
