@@ -128,7 +128,38 @@ ros2 topic info /frames -v     # confirms the QoS actually in force
 Gate 1, and anything well below that means the publish path is now the
 bottleneck rather than the camera.
 
-## What to watch on the first run
+## What the first run found
+
+`capture_node` throttled the camera from 30.027 fps to 5.64. `frame_id` is
+what made it visible: a probe subscribing to `/frames` can compare how many
+frames capture *published* against how many *arrived*, which `ros2 topic hz`
+cannot do, because it only ever sees what arrived.
+
+Splitting the sink into stages put the cost somewhere nobody would have
+guessed:
+
+| | before | after |
+| --- | --- | --- |
+| convert to `sensor_msgs/Image` | 173.2 ms | **0.9 ms** |
+| publish | 0.3 ms | 1.0 ms |
+| inter-frame interval | 176.7 ms | **33.3 ms** |
+| effective capture rate | 5.64 fps | **30.03 fps** |
+
+"27 MB/s is too much for the middleware" was a plausible theory and wrong by
+two orders of magnitude: publishing cost 0.3 ms. The time was in a single
+assignment. rclpy's generated setter for a `uint8[]` field short-circuits when
+handed an `array.array` and otherwise validates every element in a Python loop
+under `__debug__` -- 921,600 of them per 640x480 bgr8 frame.
+
+The node now costs 1.9 ms of a 33.3 ms frame budget, and 33.3 ms is 30.03 fps,
+which is the camera's measured 30.027 fps reproduced inside ROS.
+
+This is the same shape as the capture-buffer bug in Gate 1: work placed where
+it silently degrades capture, with nothing reporting the degradation. Both
+were found by measuring frames published against frames delivered, and neither
+would have appeared in a test.
+
+## What to watch next
 
 A 640x480 bgr8 frame is 921,600 bytes, so 30 fps is about 27 MB/s crossing the
 middleware. Intra-host that should use shared memory rather than the network
