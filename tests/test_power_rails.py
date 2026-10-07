@@ -79,3 +79,33 @@ def test_absent_sysfs_reads_as_empty_rather_than_zero_watts(tmp_path):
     # Off-target (laptop, CI) there are no rails. An empty list is honest;
     # a 0.0 W reading would look like a measurement.
     assert metrics._power_rails(str(tmp_path / "nothing-here")) == []
+
+
+def test_available_memory_is_read_and_is_not_memfree(tmp_path, monkeypatch):
+    # MemAvailable, not MemFree: reading several GB of weights fills the page
+    # cache, which is not free but is reclaimable, so MemFree would report a
+    # shortage that is not real.
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text(
+        "MemTotal:        7802112 kB\nMemFree:          460800 kB\n"
+        "MemAvailable:    6900000 kB\nCached:          5000000 kB\n"
+    )
+    real_open = open
+
+    def fake_open(path, *a, **kw):
+        return real_open(meminfo if path == "/proc/meminfo" else path, *a, **kw)
+
+    monkeypatch.setattr("builtins.open", fake_open)
+    assert metrics.read_system_available_bytes() == 6900000 * 1024
+
+
+def test_missing_meminfo_reads_as_zero_rather_than_raising(tmp_path, monkeypatch):
+    real_open = open
+
+    def fake_open(path, *a, **kw):
+        if path == "/proc/meminfo":
+            raise OSError("no /proc here")
+        return real_open(path, *a, **kw)
+
+    monkeypatch.setattr("builtins.open", fake_open)
+    assert metrics.read_system_available_bytes() == 0

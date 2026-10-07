@@ -13,7 +13,7 @@
 #   pip install "numpy<2" "pillow==12.3.0"
 #   pip install torch==2.8.0 torchvision==0.23.0 \
 #       --index-url https://pypi.jetson-ai-lab.io/jp6/cu126
-#   pip install "transformers==5.18.0" "accelerate==1.15.0"
+#   pip install "transformers==5.18.0" "accelerate==1.15.0" "num2words==0.5.14"
 #
 # --system-site-packages is required: cv2 comes from apt and lives outside the
 # venv, so a clean venv cannot see it and the capture code stops working.
@@ -49,3 +49,8 @@ torchvision==0.23.0
 
 transformers==5.18.0
 accelerate==1.15.0
+
+# SmolVLM's processor imports num2words at construction and raises without
+# it. It is not a declared dependency of transformers, so the model load
+# fails on a fresh environment with an ImportError rather than at install.
+num2words==0.5.14
