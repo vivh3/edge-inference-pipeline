@@ -186,7 +186,7 @@ cd edge-inference-pipeline
 
 sudo apt install -y python3-pytest     # the only dependency, and only to run the tests
 python3 -m pytest tests/ -q            # no GPU needed
-python3 tools/run_overload_sim.py --duration 12 --latency 0.4
+python3 tools/run_overload_sim.py --duration 12 --latency 0.4   # quick shape check
 ```
 
 Both should pass on a bare JetPack image: the core imports nothing outside the
@@ -480,6 +480,10 @@ gives the same reply to an empty floor and a blocked doorway.
 The cost of that choice is 519 MB of headroom against 3819 MB, and swapping
 during inference. That is a Gate 2 constraint to manage, not a reason to ship
 a model that cannot see.
+
+Measured since: four empty `rclpy` nodes cost 108 MB, so the planned node
+layout leaves roughly 350 MB with this model loaded. See
+[`ros2_ws/README.md`](../ros2_ws/README.md).
 
 4.4x fewer parameters bought 1.6x less time. If decode dominated, latency would
 scale roughly with parameter count. It does not, so a large fixed cost sits in

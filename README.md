@@ -100,39 +100,54 @@ The resulting drop rate is the design working, so it is a headline number.
 
 ### Headline result
 
-30 fps offered against a synthetic 0.4 s mean service time (12x overload), 12 s per
-policy:
+30 fps offered against a 4.93 s mean service time, 240 s per policy. **That service
+time is the one measured on hardware in Gate 1**, so the simulation runs at this
+project's real overload ratio of 148x rather than a guess:
 
-| policy | captured | published | drop rate | result age p50 | p99 | max |
+| policy | captured | published | drop rate | result age p50 | p90 | max |
 |---|---|---|---|---|---|---|
-| `latest` | 361 | 30 | 91.4% | **0.405 s** | 0.850 s | 0.850 s |
-| `fifo_bounded(8)` | 361 | 30 | 89.5% | 3.533 s | 3.902 s | 3.902 s |
-| `fifo_unbounded` | 361 | 30 | 0.0% | 5.860 s | 11.131 s | 11.131 s |
+| `latest` | 7197 | 49 | 99.3% | **4.939 s** | 5.092 s | 5.267 s |
+| `fifo_bounded(8)` | 7198 | 49 | 99.2% | 44.316 s | 44.647 s | 44.832 s |
+| `fifo_unbounded` | 7198 | 49 | 0.0% | 122.431 s | 220.622 s | 239.773 s |
 
-> **`SIMULATED`.** The service time is an input to this experiment, not a measurement
-> of any model. These runs show admission-policy behaviour only. They live in
+> **`SIMULATED`.** The admission policies are real; the engine is synthetic. Its
+> service time is calibrated to the measured baseline but it is still an input, so
+> these runs show admission behaviour and not model performance. They live in
 > `results/simulated/` and are never reported as baseline or optimised performance.
 > The same code produces the hardware version in Gate 2 by swapping the engine.
 
-Reproduce: `python3 tools/run_overload_sim.py --duration 12 --latency 0.4`
+Reproduce:
+`python3 tools/run_overload_sim.py --duration 240 --latency 4.93 --sigma 0.02 --deadline 15`
+
+No p99: 49 published results make nearest-rank p99 the maximum, which would name the
+single slowest result a tail statistic. Under this much overload a run publishes few
+results by design, so p90 and max are what the data supports.
+
+The simulation paces itself with real sleeps, so it is not bit-reproducible. Rerunning
+it moves these figures by a millisecond or so, which is why the table and the committed
+summaries are regenerated together and checked against each other in CI.
 
 Every captured frame is accounted for: `dropped + published + still queued at stop`
 equals `captured` exactly, for all three policies. The summaries carry the queue depth
 at stop so you can check it.
 
-Under `latest`, result age sits at roughly one inference service time. Under
-`fifo_bounded(8)` it saturates near `(capacity + 1) x service time`: a frame admitted to
-a full queue waits behind eight others, then pays for its own inference. The frames that
-survive are the oldest ones, backwards for this workload. The tail runs past that figure
-because service time is variable, not because the queue grew. Under `fifo_unbounded` it
-grows for as long as the run continues.
+**The bound was derived before it was measured.** `fifo_bounded(8)` saturates near
+`(capacity + 1) x service time` — a frame admitted to a full queue waits behind eight
+others, then pays for its own inference. That predicts 9 x 4.921 = 44.29 s against a
+measured 44.316 s p50. Under `latest`, result age sits at one service time plus one
+inter-frame interval: 4.954 s predicted, 4.939 s measured. Under `fifo_unbounded` it
+grows for as long as the run continues, and 240 s of running produced a 239.773 s
+maximum, which is the whole run.
 
 **Precision about the claim.** "Result age grows without bound" holds only for the
 *unbounded* FIFO. A bounded FIFO fills and starts dropping, so its age is capped by
 capacity. The unbounded case is a deliberately pathological baseline, labelled as
-one, so the claim attaches to the configuration where it is literally true. The real
-comparison is the bounded one: both drop at ~90%, so what separates them is which
-frames survive.
+one, so the claim attaches to the configuration where it is literally true.
+
+The real comparison is the bounded one, and at this overload ratio it is stark: both
+policies drop ~99% of frames and publish the same 49 results, yet one answers in 4.9 s
+and the other in 44.3 s. Dropping is not what separates them. **Which** frames survive
+is.
 
 ---
 
@@ -299,10 +314,13 @@ Python 3.10+, standard library only.
 git clone https://github.com/vivh3/edge-inference-pipeline.git
 cd edge-inference-pipeline
 
-# headline experiment: 30 fps offered against a 0.4 s service time
+# headline experiment: 30 fps against the 4.93 s service time measured on hardware
+python3 tools/run_overload_sim.py --duration 240 --latency 4.93 --sigma 0.02 --deadline 15
+
+# a faster sweep, if you only want to see the shape
 python3 tools/run_overload_sim.py --duration 12 --latency 0.4
 
-# same, with faults injected to exercise the failure taxonomy
+# faults injected, to exercise the failure taxonomy
 python3 tools/run_overload_sim.py --duration 12 --latency 0.4 \
     --p-malformed 0.05 --p-schema-violation 0.05 --p-timeout 0.02
 

@@ -47,7 +47,7 @@ comparison.
 
 ## Performance budget
 
-> Set in Gate 2 **from the Gate 1 baseline measurement**. Not before.
+> Set here from the Gate 1 baseline measurement, as promised, and not before.
 
 Called a *performance budget* or *project target*, never an SLO. A
 service-level objective derives from system or user requirements. This number
@@ -56,12 +56,28 @@ different thing. Measuring first and then setting a defensible target is
 normal practice when there is no external requirement; the honesty is in the
 label.
 
-| budget | target | met? |
-|---|---|---|
-| result age p50 | `TBD` | `TBD` |
-| result age p99 | `TBD` | `TBD` |
-| invalid-output rate | `TBD` | `TBD` |
-| sustained 10 min without health-state degradation | `TBD` | `TBD` |
+Derived from Gate 1: 4930 ms inference p50 on SmolVLM2-2.2B at 15W, and 30%
+invalid output over the probe set. Every target below is what this board was
+measured doing plus room for the pipeline around it, which is exactly why it
+is a budget and not an SLO.
+
+| budget | target | derived from | met? |
+|---|---|---|---|
+| result age p50 | <= 5.5 s | 4.930 s inference + one 33 ms frame interval + preprocessing and publish, with margin | `TBD` (Gate 2) |
+| result age p90 | <= 6.0 s | the simulated `latest` p90 of 5.094 s at this service time | `TBD` |
+| invalid-output rate | <= 35% | measured 30%, with room for scenes the probe set does not cover | `TBD` |
+| sustained 10 min | no `stalled` or `engine_dead`, and result age p50 within 10% first minute vs last | thermal and memory behaviour are unmeasured over that span | `TBD` |
+
+No p99 target. Under this overload a ten-minute run publishes roughly 120
+results, which is barely above the 100 samples nearest-rank p99 needs to mean
+anything, so p90 is the honest tail to commit to.
+
+The invalid-output target deserves a word, because a 35% ceiling looks like
+accepting failure. It is not a quality goal. The model emits unusable semantics
+on 30% of frames and the system's job is to classify every one of them rather
+than publish it; the budget exists to catch a *regression* in that rate, which
+would mean something changed in preprocessing, the prompt, or the model. Making
+the number smaller is a model problem, not a systems one, and out of scope.
 
 ## Baseline (Gate 1, single image, no pipeline)
 

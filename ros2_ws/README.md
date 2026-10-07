@@ -8,6 +8,28 @@ the one this project claims. Executors, lifecycle nodes, transforms,
 composition, and DDS internals are where the real ROS 2 depth lives, and none
 of them is exercised.
 
+## Measured before building anything
+
+Two questions had to be answered before the node layout was worth designing,
+on the Jetson at 15W, headless, with ROS 2 Humble from apt.
+
+**Can one interpreter hold rclpy, torch and cv2 together?** Yes.
+`import rclpy, torch, cv2` succeeds with `/opt/ros/humble/setup.bash` sourced
+and the project venv (`--system-site-packages`) active. rclpy is built against
+system Python 3.10 and lives outside the venv while torch lives inside it, so
+this was not a given. Had it failed, `inference_node` could not both subscribe
+to frames and run the model, and the nodes would have had to be separate
+processes talking over DDS.
+
+**What do the nodes cost?** 108 MB for four. Four `rclpy` nodes that construct
+and spin and do nothing else moved system memory from 403 MB to 511 MB used,
+about 27 MB each.
+
+That matters against the Gate 1 figure of 519 MB available with
+SmolVLM2-2.2B loaded. Four nodes plus cv2 in the capture node and some frame
+buffers leaves roughly 350 MB. Tight, and worth watching during the
+end-to-end run, but the 2.2B stays.
+
 ## Planned nodes
 
 Thin wrappers over `inference/` and `telemetry/`, which already hold all the
