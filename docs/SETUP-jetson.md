@@ -402,9 +402,27 @@ Shooting these on a phone would compare candidates on pictures the pipeline
 never sees: different sensor, resolution, JPEG encoder and colour handling.
 The set exists to predict behaviour on *this* camera.
 
-- Model id: `TBD`
-- Revision / commit SHA: `TBD`. Pin it; "latest" is not reproducible
-- Licence, and where you read it: `TBD`
+- Model id: `HuggingFaceTB/SmolVLM2-2.2B-Instruct`
+- Revision / commit SHA: `482adb537c021c86670beed01cd58990d01e72e4`
+- Licence: Apache 2.0, read on the model card at
+  <https://huggingface.co/HuggingFaceTB/SmolVLM2-2.2B-Instruct> on 2026-10-07
+- Loads as: `AutoModelForImageTextToText` resolves to
+  `SmolVLMForConditionalGeneration` (`model_type: smolvlm`), confirmed from
+  `config.json` before downloading any weights
+
+Chosen over Qwen2.5-VL for the fallback rather than for quality. SmolVLM2 ships
+at 2.2B, 500M and 256M with one architecture and one loading path, so if 2.2B
+will not fit or is too slow to iterate against, the retreat is a model id
+string. Nothing in `inference/engine.py` changes, the generation policy does
+not change, and the measurements stay comparable in kind.
+
+The card quotes 5.2 GB of GPU RAM, which is for video inference holding many
+frames. One image needs considerably less.
+
+Loading it prints a transformers warning that `pad_token_id` 128002 falls
+outside a sub-config's vocabulary. Nothing is padded at batch size 1, so it is
+inert here. Recorded because it is the first thing to suspect if generation
+starts producing garbage.
 
 ---
 
