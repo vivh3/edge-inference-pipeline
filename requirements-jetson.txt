@@ -1,0 +1,66 @@
+# Jetson Orin Nano Super, JetPack 6.2 (L4T 36.4.3), Python 3.10, CUDA 12.6.
+#
+# `pip install -r` alone will NOT reproduce this. PyPI's aarch64 torch wheels
+# are CPU-only: they import cleanly, report torch.cuda.is_available() as False,
+# and run everything on six CPU cores with no error anywhere. torch and
+# torchvision have to come from the Jetson index instead, and pointing pip at
+# both indexes lets it pick the PyPI build when the version matches. So the
+# install is two steps, in this order:
+#
+#   sudo apt install -y python3-venv libopenblas-dev python3-opencv
+#   python3 -m venv --system-site-packages .venv
+#   source .venv/bin/activate
+#   pip install "numpy<2" "pillow==12.3.0"
+#   pip install torch==2.8.0 torchvision==0.23.0 \
+#       --index-url https://pypi.jetson-ai-lab.io/jp6/cu126
+#   pip install "transformers==5.18.0" "accelerate==1.15.0" "num2words==0.5.14"
+#
+# --system-site-packages is required: cv2 comes from apt and lives outside the
+# venv, so a clean venv cannot see it and the capture code stops working.
+#
+# The cost of that flag is that apt's packages satisfy bare requirements, and
+# apt's are old. It has bitten three times here: numpy (pinned below, where
+# the ceiling is deliberate), pillow (apt ships 9.0.1 and transformers needs
+# 9.1), and pytest (apt ships 6.2.5, and anyio's plugin needs 7). Pin anything
+# apt also provides, or it reproduces as whatever apt happened to ship.
+#
+# For the tests:
+#
+#   pip install -U pytest
+#
+# Verify before trusting any measurement:
+#
+#   python -c "import torch; x = torch.randn(2000, 2000, device='cuda'); \
+#       torch.cuda.synchronize(); print(torch.cuda.get_device_name(0), (x @ x).shape)"
+#
+# A wheel can report cuda.is_available() as True and still fail on the first
+# real kernel launch, so the check runs a kernel rather than asking a flag.
+
+# Below 2.0 on purpose. apt's python3-opencv is built against the numpy 1.x
+# ABI; letting a dependency pull numpy 2.x breaks `import cv2` with an error
+# that points nowhere near its cause.
+numpy<2
+
+# Pinned, not left bare, for the same reason as numpy but in the opposite
+# direction. Under --system-site-packages pip treats apt's Pillow 9.0.1 as
+# satisfying a bare `pillow`, installs nothing, and transformers then dies at
+# import on PIL.Image.Resampling, which arrived in Pillow 9.1. A floor would
+# work; a pin is what reproduces.
+pillow==12.3.0
+
+# Paired versions, not to be mixed: 2.8<->0.23, 2.9<->0.24, 2.10<->0.25,
+# 2.11<->0.26. 2.8.0 is the oldest the index carries and the most widely
+# reported working on JetPack 6.2, which is the reason to choose it. This
+# project measures admission behaviour under overload, not kernel throughput,
+# so newer kernels buy nothing it reports and cost search results when
+# something breaks.
+torch==2.8.0
+torchvision==0.23.0
+
+transformers==5.18.0
+accelerate==1.15.0
+
+# SmolVLM's processor imports num2words at construction and raises without
+# it. It is not a declared dependency of transformers, so the model load
+# fails on a fresh environment with an ImportError rather than at install.
+num2words==0.5.14

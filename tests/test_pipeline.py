@@ -187,8 +187,8 @@ def test_bounded_fifo_result_age_is_capped_by_capacity_not_unbounded():
     The bound to expect is (capacity + 1) x service, not capacity x service: a
     frame admitted to a full queue waits behind `capacity` frames and then pays
     for its own inference. Two extra service times of slack absorb scheduler
-    jitter without letting an unbounded-style regression through -- the
-    unbounded policy reaches several times this under the same conditions.
+    jitter without letting an unbounded-style regression through. The unbounded
+    policy reaches several times this under the same conditions.
     """
     service, capacity = 0.05, 4
     engine = MockEngine(mean_latency=service, sigma=0.01, seed=5)

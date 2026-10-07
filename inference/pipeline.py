@@ -1,17 +1,15 @@
 """The asynchronous inference stage.
 
 One worker thread, one admission policy, one engine. Capture runs on its own
-thread and never blocks: `submit` does bounded work and returns. That
-separation is why result age stays bounded -- if capture waited on inference,
-the camera driver's own buffering would become the queue and the admission
-policy would have nothing left to decide.
+thread and never blocks: `submit` does bounded work and returns. If capture
+waited on inference, the camera driver's buffering would become the queue and
+the admission policy would have nothing left to decide.
 
-Failure handling is not an error path bolted on the side. Every failure in
-`inference.schema.Failure` publishes a record with explicit unknown semantics
-and a `validation` block naming the cause. The alternatives both lie:
-dropping the frame silently makes a broken model look like a slow one, and
-retrying until the output parses hides invalid results inside a latency
-number that now covers several model invocations.
+Every failure in `inference.schema.Failure` publishes a record, with explicit
+unknown semantics and a `validation` block naming the cause. The alternatives
+both lie: dropping the frame silently makes a broken model look like a slow
+one, and retrying until the output parses hides several model invocations
+inside one published latency.
 """
 
 from __future__ import annotations
@@ -45,14 +43,13 @@ class Pipeline:
     Parameters
     ----------
     deadline_s
-        Per-frame inference budget.  Exceeding it is `INFERENCE_TIMEOUT`, a
-        reported outcome, not a retry.  Set it from measured baseline latency
+        Per-frame inference budget. Exceeding it is `INFERENCE_TIMEOUT`, a
+        reported outcome, never a retry. Set it from measured baseline latency
         (Gate 1), not from a wished-for number.
     watchdog_s
-        If nothing is published for this long the health state goes STALLED.
-        The watchdog observes and reports; it does not restart anything.
-        Automatic restart is out of scope and would obscure exactly the
-        failures this project exists to make visible.
+        If nothing is published for this long, health goes STALLED. The
+        watchdog observes and reports; it does not restart anything. Automatic
+        restart would hide the failures this project exists to show.
     """
 
     def __init__(
@@ -126,10 +123,9 @@ class Pipeline:
     def _run(self) -> None:
         """The worker loop. Nothing that happens to one frame may end it.
 
-        A pipeline whose claim is "every admitted frame produces a published
-        record" cannot have a worker that dies silently on the first
-        unexpected exception -- that would be exactly the failure mode this
-        project exists to rule out.
+        The claim is that every admitted frame produces a published record. A
+        worker dying silently on the first unexpected exception would break
+        that claim and report nothing.
         """
         while not self._stop.is_set():
             frame = self.policy.take(timeout=0.1)
@@ -141,9 +137,9 @@ class Pipeline:
                 self._publish_failure(frame, Failure.PIPELINE_ERROR, repr(exc))
 
     def _process(self, frame: Frame) -> None:
-        # Preprocessing happens before the engine stamps its start, so its
-        # cost lands inside queue_age. It is measured here and carried on the
-        # record so it stays attributable (Gate 3 needs to be able to blame it).
+        # Runs before the engine stamps its start, so the cost lands inside
+        # queue_age. Measured here and carried on the record to stay
+        # attributable.
         pre = self.preprocessor.run(frame.payload)
         self.preprocess_total += pre.duration
 
@@ -156,7 +152,7 @@ class Pipeline:
             raw = RawModelOutput("", model_start, monotonic(), engine_error=str(exc))
             semantic, report = failure_report(Failure.INFERENCE_TIMEOUT, str(exc))
         except Exception as exc:
-            # EngineDied, or any other engine bug: either way the engine is
+            # EngineDied, or any other engine bug. Either way the engine is
             # not usable again without a restart, which we do not do.
             raw = RawModelOutput("", model_start, monotonic(), engine_error=repr(exc))
             semantic, report = failure_report(Failure.ENGINE_ERROR, repr(exc))
@@ -180,9 +176,9 @@ class Pipeline:
     def _publish(self, result: PublishedResult, failure: Failure) -> None:
         """Record the result, then hand it to the consumer.
 
-        Metrics are updated before the consumer runs, and a consumer that
-        raises is isolated: it is downstream of this pipeline and its bugs
-        must not stop perception or corrupt the measurements.
+        Metrics update before the consumer runs, and a consumer that raises
+        is isolated: it is downstream, and its bugs must not stop perception
+        or corrupt the measurements.
         """
         self.metrics.on_publish(result)
         self._note_outcome(failure is Failure.NONE, result.publish_ts)

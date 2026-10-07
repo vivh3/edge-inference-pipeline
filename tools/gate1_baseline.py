@@ -4,14 +4,13 @@
 Answers the three questions Gate 1 exists to answer, and nothing else:
 
   1. Does the model clear the output contract? Not "did it produce plausible
-     text" -- does inference.schema.validate accept it.
+     text", but does inference.schema.validate accept it.
   2. How much memory is left with the model loaded? Weights on disk are not
      runtime footprint, and the Jetson shares one 8 GB pool with the OS.
   3. How long does one inference take, warmup discarded?
 
-Answer 3 is what the performance budget gets set from in Gate 2. It is
-deliberately measured here, with no camera and no pipeline attached, so it is
-the model's cost and nothing else.
+Gate 2 sets the performance budget from answer 3. It is measured here with no
+camera and no pipeline attached, so it is the model's cost and nothing else.
 
     python3 tools/gate1_baseline.py --model <org>/<model> --image hallway.jpg
     python3 tools/gate1_baseline.py --mock --image anything.jpg   # smoke test
@@ -67,7 +66,7 @@ def snapshot(label: str) -> dict:
         "power_w": round(read_jetson_power_w(), 2),
     }
     print(f"  {label:26} rss {snap['process_rss_mb']:8.1f} MB   "
-          f"system free {snap['system_available_mb']:8.1f} MB", flush=True)
+          f"system avail {snap['system_available_mb']:8.1f} MB", flush=True)
     return snap
 
 
@@ -80,7 +79,13 @@ def load_image(path: str):
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--model", help="Hugging Face model id, e.g. org/model")
-    p.add_argument("--image", required=True, help="one representative photo")
+    p.add_argument("--image", required=True,
+                   help="one photo, repeated --runs times, for the latency distribution")
+    p.add_argument("--probe-dir",
+                   help="directory of probe frames, each run once, for the contract "
+                        "rate. Repeating one image measures determinism, not whether "
+                        "the model holds the contract across scenes.")
+    p.add_argument("--revision", help="commit SHA to pin; a branch name is not a version")
     p.add_argument("--runs", type=int, default=20, help="measured runs after warmup")
     p.add_argument("--dtype", default="float16")
     p.add_argument("--device", default="cuda")
@@ -98,7 +103,8 @@ def main() -> int:
         engine = MockEngine(mean_latency=0.45, sigma=0.2, seed=0)
         image = None
     else:
-        engine = VlmEngine(args.model, device=args.device, dtype=args.dtype)
+        engine = VlmEngine(args.model, device=args.device, dtype=args.dtype,
+                           revision=args.revision)
         image = load_image(args.image)
 
     # Warmup is discarded: the first invocations pay for CUDA context creation,
@@ -130,27 +136,75 @@ def main() -> int:
             samples.append({"text": raw.text[:300], "failure": report.failure.value})
         print(f"  run {i + 1:3d}/{args.runs}  {latency * 1000:7.1f} ms  {report.failure.value}", flush=True)
 
+    # Contract rate over the probe set. The loop above holds the image
+    # constant so the latency distribution is clean, which makes its outcome
+    # counts twenty deterministic repeats of one scene rather than twenty
+    # tests. One pass over varied frames is the honest contract measurement.
+    probe = {}
+    if args.probe_dir and not args.mock:
+        frames = sorted(
+            os.path.join(args.probe_dir, f)
+            for f in os.listdir(args.probe_dir)
+            if f.lower().endswith((".jpg", ".jpeg", ".png"))
+        )
+        print(f"\ncontract over {len(frames)} probe frames ...", flush=True)
+        per_frame, probe_outcomes = [], Counter()
+        for path in frames:
+            raw = engine.infer(load_image(path))
+            _, rep = validate(raw.text)
+            probe_outcomes[rep.failure.value] += 1
+            per_frame.append({
+                "file": os.path.basename(path),
+                "failure": rep.failure.value,
+                "detail": rep.get("detail", ""),
+                "text": raw.text[:200],
+            })
+            print(f"  {os.path.basename(path):16} {rep.failure.value:20} {raw.text.strip()[:70]}",
+                  flush=True)
+        ok = probe_outcomes.get("none", 0)
+        probe = {
+            "frames": len(frames),
+            "valid": ok,
+            "valid_rate": (ok / len(frames)) if frames else 0.0,
+            "outcomes": dict(probe_outcomes),
+            "per_frame": per_frame,
+        }
+
     steady = snapshot("steady state")
 
     def stats(values):
+        """Percentiles, with p99 omitted when it would only be the maximum.
+
+        Nearest-rank p99 of n samples picks rank ceil(0.99n), which is n
+        itself for any n below 100. Reporting "p99" from 20 runs reports the
+        single slowest run under a name that implies a tail, and one warmup
+        effect or scheduler hiccup becomes the headline.
+        """
         if not values:
             return None
-        return {
+        out = {
             "n": len(values),
             "mean": round(sum(values) / len(values), 4),
             "p50": round(percentile(values, 50), 4),
             "p90": round(percentile(values, 90), 4),
-            "p99": round(percentile(values, 99), 4),
             "max": round(max(values), 4),
         }
+        if len(values) >= 100:
+            out["p99"] = round(percentile(values, 99), 4)
+        return out
 
     valid = outcomes.get("none", 0)
     report = {
         "wall_clock": wall_clock_iso(),
         "clock": CLOCK_NAME,
-        "model": "MOCK -- not a real model" if args.mock else args.model,
+        "model": "MOCK, not a real model" if args.mock else args.model,
         "device": args.device,
         "dtype": args.dtype,
+        # The engine's own account of itself, which carries the revision
+        # requested and the commit the weights actually loaded from. A result
+        # file naming a model but not a revision is not reproducible, and the
+        # pin is the whole reason --revision exists.
+        "engine": engine.describe(),
         "image": os.path.basename(args.image),
         "generation_policy": DEFAULT_POLICY.describe(),
         "runs": args.runs,
@@ -166,6 +220,10 @@ def main() -> int:
         "memory": {"before_load": before, "after_load": loaded, "steady": steady},
         "power_rails": jetson_power_rail_names(),
         "sample_outputs": samples,
+        # Contract measured across scenes, when a probe set was given. The
+        # "contract" block above is one image repeated and says only whether
+        # the model is deterministic.
+        "probe_set": probe,
     }
     if args.mock:
         report["WARNING"] = "synthetic engine; these numbers measure nothing real"
@@ -179,18 +237,34 @@ def main() -> int:
     headroom = steady["system_available_mb"]
     print("\n" + "=" * 62)
     print(f"  inference latency p50   {lat['p50'] * 1000:.0f} ms")
-    print(f"  inference latency p99   {lat['p99'] * 1000:.0f} ms")
+    print(f"  inference latency p90   {lat['p90'] * 1000:.0f} ms")
+    print(f"  inference latency max   {lat['max'] * 1000:.0f} ms")
+    if "p99" in lat:
+        print(f"  inference latency p99   {lat['p99'] * 1000:.0f} ms")
+    else:
+        print(f"  (no p99: {lat['n']} runs, where p99 is just the maximum)")
     if report["output_tokens"]:
         print(f"  output tokens p50       {report['output_tokens']['p50']:.0f}")
-    print(f"  clears the contract     {valid}/{args.runs}  ({report['contract']['valid_rate'] * 100:.0f}%)")
+    print(f"  same image, {args.runs} runs    {valid}/{args.runs} valid "
+          f"(determinism, not generalisation)")
+    if probe:
+        print(f"  clears the contract     {probe['valid']}/{probe['frames']} probe frames  "
+              f"({probe['valid_rate'] * 100:.0f}%)")
+        if set(probe["outcomes"]) != {"none"}:
+            print(f"  probe failures          "
+                  f"{dict((k, v) for k, v in probe['outcomes'].items() if k != 'none')}")
+    else:
+        print("  no --probe-dir given, so contract rate is one scene only")
     if outcomes and set(outcomes) != {"none"}:
         print(f"  failures                {dict((k, v) for k, v in outcomes.items() if k != 'none')}")
-    print(f"  memory headroom         {headroom:.0f} MB free of {steady['system_total_mb']:.0f} MB")
+    print(f"  memory headroom         {headroom:.0f} MB available of "
+          f"{steady['system_total_mb']:.0f} MB")
+    print("  (process RSS understates this: CUDA allocations are not in RSS)")
     print("=" * 62)
     print(f"\nwrote {args.out}")
     print("\nGate 1 passes when the contract rate is high and headroom is comfortable.")
-    print("The p50 above is what the Gate 2 performance budget gets set from --")
-    print("call it a budget, never an SLO: it derives from what this board can do,")
+    print("The p50 above is what the Gate 2 performance budget gets set from.")
+    print("Call it a budget, never an SLO: it derives from what this board can do,")
     print("not from a requirement.")
     return 0
 

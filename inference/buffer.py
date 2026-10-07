@@ -1,12 +1,10 @@
 """Admission policies: what happens to a frame between capture and inference.
 
-Deliberately *admission and drop policy*, not backpressure. Backpressure
-slows the producer; a camera cannot be slowed, so the only lever is deciding
-which frames to admit and which to discard. Saying "backpressure" would name a
-mechanism this system does not have.
+Admission and drop policy, not backpressure. Backpressure slows the producer;
+a camera cannot be slowed, so the only lever is which frames to admit and
+which to discard.
 
-Three policies, so the design choice can be defended with measurements rather
-than assertion:
+Three policies, so the choice can be defended with measurements:
 
   LatestFrameBuffer   capacity 1, newest wins. The design choice.
   BoundedFifo(n)      classic tail-drop queue. The realistic alternative.
@@ -99,11 +97,11 @@ class AdmissionPolicy:
             self._not_empty.notify_all()
 
     def depth(self) -> int:
-        """Present for the FIFO baselines only.
+        """For the FIFO baselines only.
 
-        Deliberately not a reported metric: in a correct one-slot
-        latest-value buffer it is 0 or 1 and says nothing.  Queue *age* is
-        the informative quantity, and it is measured on the record itself.
+        Not a reported metric: in a one-slot buffer it is 0 or 1 and says
+        nothing. Queue age is the informative quantity, and it is measured on
+        the record itself.
         """
         with self._lock:
             return len(self._q)
@@ -116,17 +114,15 @@ class AdmissionPolicy:
 
 
 class LatestFrameBuffer(AdmissionPolicy):
-    """Capacity-1 overwrite buffer. A newer frame always displaces an older one.
+    """Capacity-1 overwrite buffer. A newer frame displaces an older one.
 
     A stale frame has negative value here: the consumer cannot tell a
-    3-second-old view of the world from a current one by reading the
-    semantics, so a confidently wrong old answer is worse than none. When a
-    new frame arrives and inference is busy, the pending one is discarded.
+    3-second-old view from a current one by reading the semantics, so a
+    confidently wrong old answer is worse than none.
 
-    The cost, stated plainly: result age stays near one inference service time
-    plus one inter-frame interval, and drop rate rises with the overload
-    ratio. Drops are the design working, which is why drop rate is a headline
-    number rather than a buried one.
+    The cost is that result age stays near one service time plus one
+    inter-frame interval, and drop rate rises with the overload ratio. The
+    drops are the design working, so drop rate is a headline number.
     """
 
     name = "latest"
@@ -146,17 +142,16 @@ class LatestFrameBuffer(AdmissionPolicy):
 
 
 class BoundedFifo(AdmissionPolicy):
-    """Tail-drop FIFO: when full, the *incoming* frame is discarded.
+    """Tail-drop FIFO: when full, the incoming frame is discarded.
 
-    The honest comparison for latest-frame. It drops too, so result age does
-    not grow without bound -- it saturates near (capacity + 1) x service time,
-    since a frame admitted to a full queue waits behind `capacity` others and
-    then pays for its own inference. That ceiling is the point: it makes the
-    difference between the policies a matter of *which* frames survive, not
-    whether anything is dropped.
+    The honest comparison for latest-frame. It drops too, so result age
+    saturates instead of growing without bound: near (capacity + 1) x service
+    time, since a frame admitted to a full queue waits behind `capacity`
+    others and then pays for its own inference. Both policies drop at similar
+    rates, so what separates them is which frames survive.
 
     Dropping the oldest instead converges on latest-frame as capacity falls to
-    1; not implemented, because it adds a variant without adding an argument.
+    1. Not implemented: it adds a variant without adding an argument.
     """
 
     name = "fifo_bounded"
@@ -177,11 +172,11 @@ class BoundedFifo(AdmissionPolicy):
 
 
 class UnboundedFifo(AdmissionPolicy):
-    """Never drops. A deliberately pathological baseline, labelled as one.
+    """Never drops. A pathological baseline, labelled as one.
 
     The only configuration where "result age grows without bound" is literally
-    true, included so the claim attaches to where it holds rather than to
-    queueing in general. Memory grows without bound too; do not run it long.
+    true, so the claim attaches where it holds rather than to queueing in
+    general. Memory grows without bound too; do not run it long.
     """
 
     name = "fifo_unbounded"

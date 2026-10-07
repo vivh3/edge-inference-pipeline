@@ -1,12 +1,12 @@
 """Record types, organised around the trust boundary.
 
-The model emits semantic content and nothing else.  Identifiers and
-timestamps are attached here, after validation, by trusted code.
+The model emits semantic content and nothing else. Identifiers and timestamps
+are attached here, after validation, by trusted code.
 
-If the model emitted `frame_id`, a hallucinated value would match a result to
-the wrong capture and corrupt latency accounting -- and the error would look
-like jitter, not a bug.  So `frame_id` is assigned at capture and carried
-alongside the model, never through it.
+A hallucinated `frame_id` would match a result to the wrong capture and
+corrupt latency accounting, and the error would read as jitter rather than a
+bug. So `frame_id` is assigned at capture and carried alongside the model,
+never through it.
 """
 
 from __future__ import annotations
@@ -44,8 +44,8 @@ class Frame:
 class RawModelOutput:
     """Exactly what the engine produced, plus timing the wrapper observed.
 
-    `text` is untrusted.  Nothing downstream may read it without going
-    through `inference.schema.validate`.
+    `text` is untrusted. Nothing downstream may read it without going through
+    `inference.schema.validate`.
     """
 
     text: str
@@ -72,13 +72,11 @@ class PublishedResult:
     publish_ts: float
     wall_clock: str
     semantic: dict
-    # Trusted validation report, on every record, so a consumer never has to
-    # guess whether `semantic` came from the model or from the unknown-state
-    # fallback.
+    # On every record, so a consumer never has to guess whether `semantic`
+    # came from the model or from the unknown-state fallback.
     validation: dict = field(default_factory=dict)
-    # Preprocessing cost for this frame. It falls inside `queue_age` (the
-    # worker preprocesses before the engine stamps its start), so it is
-    # reported separately rather than being lost inside the wait.
+    # Falls inside `queue_age`, since the worker preprocesses before the
+    # engine stamps its start. Reported separately so it stays attributable.
     preprocess_s: float = 0.0
 
     # --- derived durations (all from the monotonic clock) ------------------

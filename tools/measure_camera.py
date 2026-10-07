@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Measure what the camera actually delivers, not what it claims.
 
-Gate 1, step 6. A cheap USB webcam does not hold 30 fps -- exposure lengthens
-in low light, the driver drops frames, USB bandwidth caps the format. Drop rate
-in this project is computed against frames that actually arrived, so the real
-arrival rate has to be measured before any of the overload numbers mean
-anything. Computing against a nominal 30 would fabricate drops that never
-happened.
+Gate 1, step 6. A cheap USB webcam does not hold 30 fps: exposure lengthens in
+low light, the driver drops frames, USB bandwidth caps the format. Drop rate
+here is computed against frames that actually arrived, so the real arrival
+rate has to be measured first. Computing against a nominal 30 would fabricate
+drops that never happened.
 
     python3 tools/measure_camera.py --seconds 30
     python3 tools/measure_camera.py --seconds 30 --device 0 --width 640 --height 480
@@ -42,6 +41,15 @@ def main() -> int:
     p.add_argument("--width", type=int, default=640)
     p.add_argument("--height", type=int, default=480)
     p.add_argument("--fps-hint", type=float, default=30.0, help="requested, not guaranteed")
+    p.add_argument("--buffer-frames", type=int, default=2,
+                   help="driver capture buffers. 1 starves the driver and halves "
+                        "the frame rate; kept settable to reproduce that.")
+    p.add_argument("--backend", default="v4l2", choices=["v4l2", "gstreamer", "any"],
+                   help="JetPack's OpenCV prefers GStreamer, which ignores the "
+                        "pixel format request. v4l2 talks to a UVC camera directly.")
+    p.add_argument("--fourcc", default="MJPG",
+                   help="pixel format to request; MJPG is what most UVC cameras "
+                        "sustain at 30 fps. Empty string leaves it to the driver.")
     p.add_argument("--synthetic", action="store_true", help="fake source, to test this script")
     p.add_argument("--out", default=os.path.join(OUT, "camera.json"))
     args = p.parse_args()
@@ -50,8 +58,9 @@ def main() -> int:
         source = SyntheticCamera(fps=args.fps_hint)
         label = f"synthetic @ {args.fps_hint:g} fps"
     else:
-        source = WebcamSource(args.device, args.width, args.height, args.fps_hint)
-        label = f"/dev/video{args.device} {args.width}x{args.height}"
+        source = WebcamSource(args.device, args.width, args.height, args.fps_hint,
+                              args.fourcc, args.backend, args.buffer_frames)
+        label = f"/dev/video{args.device} {args.width}x{args.height} {args.fourcc or 'driver default'}"
 
     stamps = []
     lock = threading.Lock()
@@ -71,22 +80,32 @@ def main() -> int:
     with lock:
         stamps = sorted(stamps)
     if len(stamps) < 3:
-        print(f"only {len(stamps)} frames captured -- is the camera connected?", file=sys.stderr)
+        print(f"only {len(stamps)} frames captured. Is the camera connected?", file=sys.stderr)
         return 1
 
     intervals = [b - a for a, b in zip(stamps, stamps[1:])]
     span = stamps[-1] - stamps[0]
-    # Frames arriving more than 1.5 inter-frame periods apart: the driver
-    # skipped one. Worth knowing, because those gaps are camera-side staleness
-    # no admission policy can undo.
-    nominal = 1.0 / args.fps_hint
-    gaps = [i for i in intervals if i > 1.5 * nominal]
+    # Frames arriving more than 1.5 of this camera's own inter-frame periods
+    # apart: the driver skipped one. Worth knowing, because those gaps are
+    # camera-side staleness no admission policy can undo.
+    #
+    # The threshold is the measured median, not the requested period. A camera
+    # steadily delivering half the rate it was asked for has a rate problem,
+    # not a gap problem, and measuring gaps against the request would report
+    # every single interval as a gap and say nothing about dropouts. The rate
+    # mismatch is already reported, on its own, as requested vs effective fps.
+    median = percentile(intervals, 50)
+    gap_threshold = 1.5 * median
+    gaps = [i for i in intervals if i > gap_threshold]
 
     report = {
         "source": label,
         "clock": CLOCK_NAME,
         "wall_clock_start": started,
         "requested_fps": args.fps_hint,
+        # What the driver agreed to, read back after opening. The request
+        # above is a claim; this is what the camera is actually doing.
+        "negotiated": getattr(source, "negotiated", None),
         "sample_seconds": round(span, 3),
         "frames": len(stamps),
         "effective_fps": round(len(intervals) / span, 3) if span > 0 else 0.0,
@@ -99,7 +118,8 @@ def main() -> int:
             "max": round(max(intervals), 5),
         },
         "long_gaps": {
-            "threshold_s": round(1.5 * nominal, 5),
+            "basis": "1.5x the measured median interval",
+            "threshold_s": round(gap_threshold, 5),
             "count": len(gaps),
             "fraction": round(len(gaps) / len(intervals), 4),
         },
@@ -114,6 +134,11 @@ def main() -> int:
     print()
     print(f"  frames captured     {report['frames']} over {report['sample_seconds']}s")
     print(f"  effective fps       {report['effective_fps']}  (requested {args.fps_hint:g})")
+    if report["negotiated"]:
+        n = report["negotiated"]
+        print(f"  negotiated format   {n['fourcc']} {n['width']}x{n['height']} "
+              f"@ {n['fps']:g} fps via {n['backend']}, "
+              f"{n['buffer_frames']} buffers")
     print(f"  interval p50 / p99  {iv['p50'] * 1000:.1f} ms / {iv['p99'] * 1000:.1f} ms")
     print(f"  interval min / max  {iv['min'] * 1000:.1f} ms / {iv['max'] * 1000:.1f} ms")
     print(f"  long gaps           {report['long_gaps']['count']} "
