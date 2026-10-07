@@ -18,6 +18,16 @@
 # --system-site-packages is required: cv2 comes from apt and lives outside the
 # venv, so a clean venv cannot see it and the capture code stops working.
 #
+# The cost of that flag is that apt's packages satisfy bare requirements, and
+# apt's are old. It has bitten three times here: numpy (pinned below, where
+# the ceiling is deliberate), pillow (apt ships 9.0.1 and transformers needs
+# 9.1), and pytest (apt ships 6.2.5, and anyio's plugin needs 7). Pin anything
+# apt also provides, or it reproduces as whatever apt happened to ship.
+#
+# For the tests:
+#
+#   pip install -U pytest
+#
 # Verify before trusting any measurement:
 #
 #   python -c "import torch; x = torch.randn(2000, 2000, device='cuda'); \
