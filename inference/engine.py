@@ -218,11 +218,16 @@ class VlmEngine(InferenceEngine):
         policy: GenerationPolicy = DEFAULT_POLICY,
         device: str = "cuda",
         dtype: str = "float16",
+        revision: Optional[str] = None,
     ) -> None:
         self.model_id = model_id
         self.policy = policy
         self.device = device
         self.dtype = dtype
+        # A branch name is not a version. Without a pinned commit, a rerun
+        # months later can load different weights under the same model id and
+        # report the difference as a change in the system.
+        self.revision = revision
         self._model = None
         self._processor = None
 
@@ -233,9 +238,11 @@ class VlmEngine(InferenceEngine):
         from transformers import AutoModelForImageTextToText, AutoProcessor  # type: ignore
 
         torch_dtype = getattr(torch, self.dtype)
-        self._processor = AutoProcessor.from_pretrained(self.model_id)
+        self._processor = AutoProcessor.from_pretrained(
+            self.model_id, revision=self.revision
+        )
         self._model = AutoModelForImageTextToText.from_pretrained(
-            self.model_id, torch_dtype=torch_dtype
+            self.model_id, torch_dtype=torch_dtype, revision=self.revision
         ).to(self.device)
         self._model.eval()
 
@@ -243,10 +250,19 @@ class VlmEngine(InferenceEngine):
         return {
             "engine": "vlm",
             "model_id": self.model_id,
+            "revision_requested": self.revision,
+            # What was actually loaded, read back off the model config. A
+            # requested revision is a claim; this is the commit the weights
+            # came from, and it is the one worth recording.
+            "revision_loaded": self._loaded_commit(),
             "device": self.device,
             "dtype": self.dtype,
             "generation": self.policy.describe(),
         }
+
+    def _loaded_commit(self) -> Optional[str]:
+        config = getattr(self._model, "config", None)
+        return getattr(config, "_commit_hash", None)
 
     def warmup(self, runs: int) -> None:
         self._load()
