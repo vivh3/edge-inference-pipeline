@@ -130,13 +130,24 @@ class CaptureNode(Node):
         buffering back in charge of staleness, which is exactly what the
         admission policy exists to take over.
         """
+        # rclpy's SIGINT handler invalidates the context before this node's
+        # own shutdown runs, so a frame already in flight on the capture
+        # thread would publish into a dead context and raise. Ctrl-C is a
+        # normal exit, not a stack trace.
+        if not rclpy.ok():
+            return
         message = StampedFrame()
         message.header.stamp = self.get_clock().now().to_msg()
         message.header.frame_id = self._optical_frame
         message.image = to_image_msg(frame.payload)
         message.frame_id = frame.frame_id
         message.capture_ts_monotonic = frame.capture_ts
-        self._publisher.publish(message)
+        try:
+            self._publisher.publish(message)
+        except Exception:
+            if rclpy.ok():
+                raise
+            return  # lost the race with shutdown
         self._published += 1
 
     def destroy_node(self) -> bool:
