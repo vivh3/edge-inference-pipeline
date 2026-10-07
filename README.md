@@ -34,7 +34,7 @@ component that keeps up with its sensor produces no overload behaviour to engine
 | gate | scope | state |
 |---|---|---|
 | 0 | Core: admission policies, output contract, failure taxonomy, telemetry, overload experiment | **done** |
-| 1 | Jetson feasibility: model running, memory headroom, measured camera rate, baseline latency | **in progress** |
+| 1 | Jetson feasibility: model running, memory headroom, measured camera rate, baseline latency | **done** |
 | 2 | ROS 2 integration, performance budget, end-to-end on device | not started |
 | 3 | Nsight profiling, bottleneck root cause, one justified fix, sustained load | not started |
 | 4 | Diagram, demo video, results, v0.1 | not started |
@@ -222,11 +222,20 @@ A watchdog reports a `stalled` health state when nothing publishes within its in
 It reports; it does not restart. Restart is out of scope and would hide the failures this
 project exists to expose.
 
+Measured in Gate 1: SmolVLM2-2.2B-Instruct at float16, 15W, over 10 probe
+frames from the project's own camera.
+
 | measured on hardware | value |
 |---|---|
-| invalid-output rate | `TBD` (Gate 2) |
-| breakdown by failure kind | `TBD` |
-| extraction rate | `TBD` |
+| invalid-output rate | **30%** (3 of 10 probe frames) |
+| breakdown by failure kind | `unusable_semantics` 3; nothing else fired |
+| extraction rate | 0% — the model never wrapped its JSON in prose |
+
+All three failures are the same shape: `blocked` with `obstacle_location` set
+to `none`. The model saw an obstruction and would not localise it, against a
+prompt that says to use `none` only when the path is clear. A pipeline that
+could not tell that from a usable answer would have published ten confident
+results.
 
 ---
 
@@ -343,6 +352,8 @@ ros2_ws/       Gate 2: integration plumbing, a thin wrapper over the core
 | model id + revision/SHA | `HuggingFaceTB/SmolVLM2-2.2B-Instruct` @ `482adb5` |
 | model licence | Apache 2.0, [model card](https://huggingface.co/HuggingFaceTB/SmolVLM2-2.2B-Instruct) |
 | inference runtime | PyTorch 2.8.0, transformers 5.18.0 |
+| baseline inference latency | 4930 ms p50, 6134 ms max (15W, float16) |
+| overload ratio, measured | 148x against a 33.3 ms frame period |
 | ROS 2 | Humble (Gate 2) |
 | power profile | `nvpmodel` mode 0 (15W), held for every measurement |
 | camera | j5create JVCU100, MJPG 640x480, measured 30.027 fps |
