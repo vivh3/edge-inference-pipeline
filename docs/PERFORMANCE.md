@@ -119,45 +119,57 @@ python3 tools/run_overload_sim.py --policies latest fifo_bounded fifo_unbounded
 | `fifo_bounded(8)` | `TBD` | `TBD` | `TBD` | `TBD` |
 | `fifo_unbounded` | `TBD` | `TBD` | `TBD` | `TBD` |
 
-## Gate 2 end to end: the budget is missed, and the decomposition says where
+## Gate 2 end to end
 
 The full graph runs on the Jetson -- camera, ROS 2, admission policy,
 SmolVLM2-2.2B, validation, JSON out -- at a 99.4% policy drop rate, which is
-the 148x overload ratio arriving as predicted. One published record:
+the 148x overload ratio arriving as predicted.
 
-| stage | measured | expected |
+Twenty-nine consecutive published records, steady state:
+
+| stage | p50 | range |
 | --- | --- | --- |
-| queue age | 2.842 s | one frame interval |
-| of which preprocess | **2.818 s** | ~0.003 s |
-| inference | 6.454 s | 4.930 s (Gate 1 baseline) |
-| post-processing | 0.001 s | small |
-| **result age** | **9.298 s** | budget 5.5 s |
+| queue age | 0.020 s | 0.009 - 0.094 s |
+| of which preprocess | 0.004 s | 0.003 - 0.005 s |
+| inference | 6.136 s | 6.081 - 6.286 s |
+| post-processing | 0.001 s | |
+| **result age** | **6.163 s** | 6.120 - 6.317 s |
 
-Preprocessing is a 640x480 to 448x448 resize and a colour conversion. It is
-taking three seconds, and inference is 30% slower than the same model on the
-same image measured standalone.
+Against a 5.5 s budget, so the budget is missed by 12%.
 
-### Two hypotheses, both killed by measurement
+Queue age of 20 ms against a 33 ms frame interval is latest-frame admission
+working exactly as designed: the newest frame is taken almost as soon as it
+arrives, and preprocessing is 4 ms of it.
 
-**GIL contention** between the executor thread deserialising messages and the
-pipeline's worker thread. Killed twice: halving the publish rate from 30 to
-15 Hz moved preprocess only 3.219 s to 2.818 s, and `vmstat` shows the CPU
-82-93% idle. Contention burns CPU in the thread holding the lock.
+### What is left to explain
 
-**Memory pressure.** Swap is in use -- `swpd` grew 301 MB to 398 MB and `so`
-peaked at 12.3 MB/s while the model loaded -- but in steady state `si` and
-`so` are single digits and `wa` is 0. The board is not paging during
-inference.
+Inference is 6.136 s here against **4.930 s** measured standalone in Gate 1,
+on the same model, the same image, the same power mode. A consistent 25%
+inflation across every sample, not a tail effect.
 
-So the worker thread is spending seconds blocked while the CPU is idle,
-nothing pages, and nothing holds the GIL. **It is waiting on something, and
-guessing from the outside has stopped being productive.** This is what the
-section below exists for: NVTX ranges around the stages, `nsys`, and a look
-at where the thread actually is. The decomposition has done its job by
-localising the problem to a stage that should cost milliseconds.
+The profile points at the interpreter. `py-spy` on the node reports
+`GIL: 32%, Active: 97%` with CPU time dominated by the decode loop in Python
+-- `modeling_llama.py::forward` 5.80 s own, `linear.py::forward` 3.16 s,
+`rotate_half` 1.30 s -- all holding the GIL between CUDA launches, while the
+executor thread deserialises 30 x 921,600 bytes per second in the same
+process. A GIL-bound process occupies roughly one core, which is why `vmstat`
+shows five of six idle and looks like there is capacity to spare.
 
-Worth noting what a single end-to-end latency number would have shown here:
-9.3 seconds, and nothing else.
+The discriminating test is to starve the executor: publish at 1 fps and see
+whether inference falls toward 4.930 s.
+
+### A correction, and the reason it is recorded
+
+An earlier version of this section reported preprocessing at 2.818 s and
+result age at 9.298 s, from a single published record. The distribution above
+shows preprocessing at 4 ms. That record was captured during startup, while
+the model was loading and `vmstat` showed swap-out at 12.3 MB/s -- the one
+period the board was genuinely paging.
+
+Three rounds of investigation followed from n=1. It is the same error the p99
+reporting had: a number that describes one sample, read as though it
+described the system. Worth leaving in the record, because the fix for it is
+cheap and the cost of skipping it was most of an evening.
 
 ## The bottleneck investigation (Gate 3)
 
