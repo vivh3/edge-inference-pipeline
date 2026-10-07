@@ -106,7 +106,52 @@ and what each would look like in a trace:
 | synchronisation stalls | GPU idle gaps aligned with CPU-side waits |
 | memory pressure | allocator churn, swap, or throttling under sustained load |
 
-**Hypothesis:** `TBD. Write it before running nsys, not after.`
+### Evidence already in hand, from the Gate 1 baseline
+
+`jtop` during 20 measured inferences of SmolVLM2-2.2B at float16, 15W:
+
+| quantity | during inference | idle |
+| --- | --- | --- |
+| GPU utilisation | **99.7 - 99.8%** | 0% |
+| GPU clock | 612 MHz, the 15W ceiling | 306 MHz |
+| EMC | 2.1 GHz, against a 2133 MHz cap | 204 MHz |
+| CPU, busiest core | 38% (the python process) | 14% |
+| process memory | 1.2 GB CPU **+ 5.1 GB GPU** | - |
+| system memory | 6.9 GB of 7.4 GB, 369 MB swapped | 3.5 GB, no swap |
+| VDD_IN | 15.9 - 16.9 W | 5.9 W |
+| tj | 57 - 59 C, fan 38 - 43% | 50 C |
+
+This rules out three of the six candidates before any profiler runs. A GPU at
+99.8% is not idling behind CPU preprocessing, not waiting on a synchronous
+host-to-device copy, and not stalling on synchronisation. Those all show as
+GPU idle gaps, and there are none. CPU is 38% on one core and near zero on the
+other five.
+
+It also rules out thermal throttling. 59 C on a part that throttles far higher,
+with the fan at 43%, is not a thermally limited board.
+
+What is left is on-GPU work: prefill, decode, or both. The arithmetic says to
+check prefill first. 4907 ms for 19 output tokens is 258 ms per token if decode
+were the whole cost. Decode re-reads the weights once per token, so 4.4 GB
+against this mode's memory bandwidth bounds a token well under 100 ms. Decode
+alone does not explain the measurement, and SmolVLM tiles an image into many
+vision tokens, all of which are processed in one prefill pass.
+
+**Hypothesis:** prefill (vision encoding plus prompt processing) dominates, not
+decode. Time to first token separates them, which is why it is a reported
+metric. If TTFT is a large fraction of 4907 ms, the fix space is image
+tiling, resolution and the vision tower. If it is small, decode is slower than
+bandwidth explains and the fix space is the generation path.
+
+Written before profiling. Being wrong here is a good outcome.
+
+### Not the bottleneck, but worth recording
+
+The GPU sits at exactly the 15W mode's 612 MHz ceiling and EMC at its cap, so
+this measurement is clock-limited by a deliberate choice. Mode 1 (25W) offers
+918 MHz and 3199 MHz. That is a different operating point, not a fix, and
+changing it would invalidate every measurement taken so far. Noted so the
+figure is read as "4907 ms at 15W" rather than "4907 ms".
 
 ### Step 2: NVTX ranges
 
