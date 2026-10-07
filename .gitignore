@@ -10,3 +10,9 @@ venv/
 # Nsight captures are large; keep the screenshots and summaries, not the raw traces.
 results/traces/*.nsys-rep
 results/traces/*.sqlite
+
+# Probe frames are photographs of a real room. The manifest records the
+# capture settings and per-frame brightness, which is what a reader needs to
+# judge the set; the images themselves stay local.
+results/probe/*.jpg
+results/probe/*.png
