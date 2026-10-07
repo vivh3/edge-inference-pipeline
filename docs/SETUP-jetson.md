@@ -376,6 +376,12 @@ is enough to answer the Gate 1 question, which is whether a model clears the
 output contract at all. Capture more only if two candidates come out close
 enough that the set has to choose between them.
 
+The frames are photographs of a real room, so `results/probe/*.jpg` is
+ignored and only `manifest.json` is committed. It records the negotiated
+capture format and each frame's mean brightness, which is what a reader needs
+to judge whether the set was usable. Anyone reproducing this shoots their own
+set against the table above; the frames were never the reusable part.
+
 Shooting these on a phone would compare candidates on pictures the pipeline
 never sees: different sensor, resolution, JPEG encoder and colour handling.
 The set exists to predict behaviour on *this* camera.
