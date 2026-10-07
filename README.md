@@ -100,9 +100,11 @@ The resulting drop rate is the design working, so it is a headline number.
 
 ### Headline result
 
-30 fps offered against a 4.93 s mean service time, 240 s per policy. **That service
-time is the one measured on hardware in Gate 1**, so the simulation runs at this
-project's real overload ratio of 148x rather than a guess:
+30 fps offered against a 4.93 s mean service time, 240 s per policy -- the Gate 1
+baseline as it stood when this table was generated. That baseline has since been
+corrected to 6.09 s (`docs/PERFORMANCE.md`), which raises the overload ratio to 183x;
+the table is regenerated at the new service time before Gate 3. Every result age
+shifts up, and the ranking does not change:
 
 | policy | captured | published | drop rate | result age p50 | p90 | max |
 |---|---|---|---|---|---|---|
@@ -370,8 +372,8 @@ ros2_ws/       Gate 2: integration plumbing, a thin wrapper over the core
 | model id + revision/SHA | `HuggingFaceTB/SmolVLM2-2.2B-Instruct` @ `482adb5` |
 | model licence | Apache 2.0, [model card](https://huggingface.co/HuggingFaceTB/SmolVLM2-2.2B-Instruct) |
 | inference runtime | PyTorch 2.8.0, transformers 5.18.0 |
-| baseline inference latency | 4930 ms p50, 6134 ms max (15W, float16) |
-| overload ratio, measured | 148x against a 33.3 ms frame period |
+| baseline inference latency | 6088 ms p50, 6119 ms max (15W, float16) |
+| overload ratio, measured | 183x against a 33.3 ms frame period |
 | ROS 2 | Humble (Gate 2) |
 | power profile | `nvpmodel` mode 0 (15W), held for every measurement |
 | camera | j5create JVCU100, MJPG 640x480, measured 30.027 fps |
@@ -380,9 +382,9 @@ ros2_ws/       Gate 2: integration plumbing, a thin wrapper over the core
 
 ## Known issues and limitations
 
-- **No model measurements yet.** The overload comparison in `results/simulated/` comes
-  from a synthetic engine whose service time is an experimental input, not a claim
-  about any model. Only the camera figures in `results/baseline/` are measured.
+- **The overload comparison is simulated.** `results/simulated/` comes from a
+  synthetic engine whose service time is an experimental input, not a claim about any
+  model. The model and camera figures in `results/baseline/` are measured on hardware.
 - **The deadline is enforced inside generation**, by a stopping criterion checking the
   clock between tokens. A kernel already executing cannot be interrupted, so an
   externally enforced deadline would only be detected after the fact. A single
