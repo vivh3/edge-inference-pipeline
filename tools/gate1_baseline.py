@@ -66,7 +66,7 @@ def snapshot(label: str) -> dict:
         "power_w": round(read_jetson_power_w(), 2),
     }
     print(f"  {label:26} rss {snap['process_rss_mb']:8.1f} MB   "
-          f"system free {snap['system_available_mb']:8.1f} MB", flush=True)
+          f"system avail {snap['system_available_mb']:8.1f} MB", flush=True)
     return snap
 
 
@@ -186,7 +186,9 @@ def main() -> int:
     print(f"  clears the contract     {valid}/{args.runs}  ({report['contract']['valid_rate'] * 100:.0f}%)")
     if outcomes and set(outcomes) != {"none"}:
         print(f"  failures                {dict((k, v) for k, v in outcomes.items() if k != 'none')}")
-    print(f"  memory headroom         {headroom:.0f} MB free of {steady['system_total_mb']:.0f} MB")
+    print(f"  memory headroom         {headroom:.0f} MB available of "
+          f"{steady['system_total_mb']:.0f} MB")
+    print("  (process RSS understates this: CUDA allocations are not in RSS)")
     print("=" * 62)
     print(f"\nwrote {args.out}")
     print("\nGate 1 passes when the contract rate is high and headroom is comfortable.")

@@ -42,7 +42,8 @@ from inference.schema import Failure
 
 __all__ = [
     "ResultRow", "Summary", "Metrics", "percentile",
-    "read_rss_bytes", "read_jetson_power_w", "jetson_power_rail_names",
+    "read_rss_bytes", "read_system_available_bytes",
+    "read_jetson_power_w", "jetson_power_rail_names",
 ]
 
 
@@ -78,6 +79,9 @@ class ResultRow:
     path_status: str
     obstacle_location: str
     rss_mb: float = 0.0
+    # On a Jetson this is the number that matters, not rss_mb. See
+    # read_system_available_bytes.
+    system_available_mb: float = 0.0
     power_w: float = 0.0
 
 
@@ -100,6 +104,7 @@ class Summary:
     post_processing: Dict[str, Optional[float]]
     result_age: Dict[str, Optional[float]]
     peak_rss_mb: float
+    min_system_available_mb: Optional[float]
     mean_power_w: float
     clock: str = CLOCK_NAME
     wall_clock_start: str = ""
@@ -128,15 +133,36 @@ def _stats(values: List[float]) -> Dict[str, Optional[float]]:
 def read_rss_bytes() -> int:
     """Resident set size of this process, from /proc. 0 if unavailable.
 
-    Deliberately process RSS and not "GPU memory used": on a Jetson the GPU
-    and CPU share one physical pool, so a separate device-memory figure would
-    invite double counting.  The headroom number that matters is total system
-    memory, sampled alongside this (see docs/SETUP-jetson.md).
+    RSS badly understates footprint on a Jetson. CUDA allocations live in the
+    pool the CPU shares but are not mapped into the process, so they never
+    appear here. Loading a 2.2B model at float16 moved RSS by 1.3 GB while
+    system available memory fell by 6.4 GB. Read this next to
+    read_system_available_bytes, and quote that one for headroom.
     """
     try:
         with open(f"/proc/{os.getpid()}/status", "r") as fh:
             for line in fh:
                 if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) * 1024
+    except OSError:
+        pass
+    return 0
+
+
+def read_system_available_bytes() -> int:
+    """MemAvailable from /proc/meminfo. 0 if unavailable.
+
+    MemAvailable, not MemFree: reading several GB of weights off disk fills
+    the page cache, which is not free but is reclaimable, and MemFree would
+    report a shortage that does not exist.
+
+    This is the headroom figure on a board whose GPU and CPU share one pool.
+    It counts the model's device memory, which process RSS does not.
+    """
+    try:
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
                     return int(line.split()[1]) * 1024
     except OSError:
         pass
@@ -237,7 +263,9 @@ class Metrics:
         self.sample_interval = 1.0
         self._last_sample_ts = -1e9
         self._last_rss = 0
+        self._last_available = 0
         self._last_power = 0.0
+        self.min_available = 0
         self.start_ts = monotonic()
         self.start_wall = wall_clock_iso()
         self.first_capture_ts: Optional[float] = None
@@ -262,18 +290,19 @@ class Metrics:
 
     # -- publish side ------------------------------------------------------
 
-    def _sample_resources(self) -> Tuple[int, float]:
+    def _sample_resources(self) -> Tuple[int, int, float]:
         if not self.sample_resources:
-            return 0, 0.0
+            return 0, 0, 0.0
         now = monotonic()
         if now - self._last_sample_ts >= self.sample_interval:
             self._last_sample_ts = now
             self._last_rss = read_rss_bytes()
+            self._last_available = read_system_available_bytes()
             self._last_power = read_jetson_power_w()
-        return self._last_rss, self._last_power
+        return self._last_rss, self._last_available, self._last_power
 
     def on_publish(self, result) -> ResultRow:
-        rss, power = self._sample_resources()
+        rss, available, power = self._sample_resources()
         v = result.validation
         row = ResultRow(
             frame_id=result.frame_id,
@@ -292,6 +321,7 @@ class Metrics:
             path_status=result.semantic.get("path_status", "unknown"),
             obstacle_location=result.semantic.get("obstacle_location", "unknown"),
             rss_mb=rss / 1e6,
+            system_available_mb=available / 1e6,
             power_w=power,
         )
         with self._lock:
@@ -300,6 +330,10 @@ class Metrics:
             if row.extracted:
                 self.extracted_count += 1
             self.peak_rss = max(self.peak_rss, rss)
+            if available:
+                self.min_available = (
+                    available if not self.min_available else min(self.min_available, available)
+                )
             if power:
                 self.power_samples.append(power)
         return row
@@ -315,6 +349,7 @@ class Metrics:
             extracted = self.extracted_count
             intervals = list(self.capture_intervals)
             peak_rss = self.peak_rss
+            min_available = self.min_available
             power = list(self.power_samples)
             first_cap = self.first_capture_ts
             last_cap = self.last_capture_ts
@@ -343,6 +378,8 @@ class Metrics:
             post_processing=_stats([r.post_processing for r in rows]),
             result_age=_stats([r.result_age for r in rows]),
             peak_rss_mb=peak_rss / 1e6,
+            # The low-water mark, because headroom is about the worst moment.
+            min_system_available_mb=(min_available / 1e6) if min_available else None,
             mean_power_w=(sum(power) / len(power)) if power else 0.0,
             wall_clock_start=self.start_wall,
             notes=dict(notes or {}),
