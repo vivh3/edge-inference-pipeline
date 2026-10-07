@@ -242,7 +242,7 @@ class VlmEngine(InferenceEngine):
             self.model_id, revision=self.revision
         )
         self._model = AutoModelForImageTextToText.from_pretrained(
-            self.model_id, torch_dtype=torch_dtype, revision=self.revision
+            self.model_id, dtype=torch_dtype, revision=self.revision
         ).to(self.device)
         self._model.eval()
 
