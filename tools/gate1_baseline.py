@@ -133,6 +133,9 @@ def main() -> int:
 
     print(f"\nmeasuring {args.runs} runs ...", flush=True)
     latencies, ttfts, tokens = [], [], []
+    # inference_latency spans both. They run on different processors and have
+    # different fixes, so a single number cannot say where the time went.
+    processor_s, generate_s = [], []
     outcomes = Counter()
     extractions = 0
     samples = []
@@ -145,6 +148,10 @@ def main() -> int:
             ttfts.append(raw.first_token_ts - raw.inference_start_ts)
         if raw.output_tokens is not None:
             tokens.append(raw.output_tokens)
+        if raw.processor_s is not None:
+            processor_s.append(raw.processor_s)
+        if raw.generate_s is not None:
+            generate_s.append(raw.generate_s)
 
         _, report = validate(raw.text)
         outcomes[report.failure.value] += 1
@@ -226,6 +233,8 @@ def main() -> int:
         "generation_policy": DEFAULT_POLICY.describe(),
         "runs": args.runs,
         "inference_latency_s": stats(latencies),
+        "processor_s": stats(processor_s),
+        "generate_s": stats(generate_s),
         "time_to_first_token_s": stats(ttfts),
         "output_tokens": stats([float(t) for t in tokens]),
         "contract": {
@@ -260,6 +269,12 @@ def main() -> int:
         print(f"  inference latency p99   {lat['p99'] * 1000:.0f} ms")
     else:
         print(f"  (no p99: {lat['n']} runs, where p99 is just the maximum)")
+    proc, gen = report["processor_s"], report["generate_s"]
+    if proc and gen:
+        share = 100.0 * proc["p50"] / lat["p50"] if lat["p50"] else 0.0
+        print(f"    of which processor    {proc['p50'] * 1000:.0f} ms on the CPU "
+              f"({share:.1f}% of inference)")
+        print(f"    of which generate     {gen['p50'] * 1000:.0f} ms on the GPU")
     if report["output_tokens"]:
         print(f"  output tokens p50       {report['output_tokens']['p50']:.0f}")
     print(f"  same image, {args.runs} runs    {valid}/{args.runs} valid "

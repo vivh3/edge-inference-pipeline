@@ -287,6 +287,12 @@ class VlmEngine(InferenceEngine):
         prompt = self._processor.apply_chat_template(messages, add_generation_prompt=True)
         inputs = self._processor(images=image, text=prompt, return_tensors="pt").to(self.device)
 
+        # Everything above is CPU work -- chat templating, tokenisation, image
+        # tensor preparation -- and everything below is the GPU. A resource log
+        # put a sub-90% GPU window once per inference cycle, implying a few
+        # hundred milliseconds off the GPU per frame, and one `inference_latency`
+        # spanning both could not say how much. This stamp says it outright.
+        generate_start = monotonic()
         stopping = _deadline_stopping_criteria(deadline)
         try:
             with torch.inference_mode():
@@ -310,6 +316,8 @@ class VlmEngine(InferenceEngine):
             inference_start_ts=start,
             inference_end_ts=end,
             output_tokens=int(new_tokens.shape[-1]),
+            processor_s=generate_start - start,
+            generate_s=end - generate_start,
         )
 
     def close(self) -> None:
