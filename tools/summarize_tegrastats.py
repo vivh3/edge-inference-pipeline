@@ -15,6 +15,12 @@ tegrastats log can, so this parses one.
 Samples are split into busy and idle by GPU utilisation, because a log always
 brackets the run with idle time and mixing the two produces an average that
 describes neither. The split is reported so the choice is visible.
+
+One sample at each edge of each busy stretch is then dropped. tegrastats
+reports the *mean* over its interval, so a sample straddling the start or end
+of the run averages a working GPU with an idle one. Left in, those samples
+put impossible values in the minimum column -- 0% CPU and 11.5 W during an
+inference -- and make the clock look like it sagged when it did not.
 """
 
 from __future__ import annotations
@@ -77,6 +83,70 @@ def parse_line(line: str) -> Optional[Dict[str, float]]:
     return sample
 
 
+def busy_runs(
+    samples: List[Dict[str, float]], threshold: float
+) -> List[List[Dict[str, float]]]:
+    """Contiguous stretches above the busy threshold, in order."""
+    runs: List[List[Dict[str, float]]] = []
+    current: List[Dict[str, float]] = []
+    for sample in samples:
+        if sample["gpu_pct"] > threshold:
+            current.append(sample)
+        elif current:
+            runs.append(current)
+            current = []
+    if current:
+        runs.append(current)
+    return runs
+
+
+def trim_edges(
+    runs: List[List[Dict[str, float]]], edge: int
+) -> Dict[str, object]:
+    """Drop `edge` samples from each end of each run.
+
+    A run too short to survive trimming is dropped whole: it is all edge, and
+    a one-second blip above the threshold is not a measurement of anything.
+    """
+    kept: List[Dict[str, float]] = []
+    dropped_runs = 0
+    for run in runs:
+        if len(run) > 2 * edge:
+            kept.extend(run[edge : len(run) - edge])
+        else:
+            dropped_runs += 1
+    return {"samples": kept, "dropped_short_runs": dropped_runs}
+
+
+# A clock this close to the ceiling is the sampling interval, not the governor.
+_AT_CEILING = 0.98
+
+
+def clock_verdict(gpu_mhz: Dict[str, float]) -> str:
+    ceiling = gpu_mhz["max"]
+    low = gpu_mhz["min"]
+    share = low / ceiling if ceiling else 0.0
+    n = gpu_mhz["n"]
+    if low == ceiling:
+        return (
+            f"GPU clock pinned at {ceiling:.0f} MHz for all {n} samples.\n"
+            "No sag, so this run was neither thermally nor power throttled."
+        )
+    if share >= _AT_CEILING:
+        return (
+            f"GPU clock held the ceiling: {low:.0f} - {ceiling:.0f} MHz over {n} "
+            f"samples, the low being {share * 100:.1f}% of the high.\n"
+            "A spread this small is tegrastats averaging over its interval, not\n"
+            "the governor stepping down, so this run was not throttled."
+        )
+    return (
+        f"GPU clock sagged: {low:.0f} - {ceiling:.0f} MHz over {n} samples, the low\n"
+        f"being {share * 100:.1f}% of the high. That is below the power mode's\n"
+        "ceiling for long enough to matter. Check tj and VDD_IN against the mode's\n"
+        "budget before reading anything else in this table."
+    )
+
+
 def stats(samples: List[Dict[str, float]], field: str) -> Optional[Dict[str, float]]:
     values = [s[field] for s in samples if field in s]
     if not values:
@@ -116,6 +186,13 @@ def main() -> int:
         default=50.0,
         help="GPU utilisation %% above which a sample counts as busy (default 50)",
     )
+    p.add_argument(
+        "--trim-edges",
+        type=int,
+        default=1,
+        help="samples to drop from each end of each busy stretch (default 1); "
+        "0 keeps them, which puts interval-averaged values in the minimum column",
+    )
     p.add_argument("--out", help="write the summary as JSON")
     args = p.parse_args()
 
@@ -124,26 +201,44 @@ def main() -> int:
     if not samples:
         raise SystemExit(f"no tegrastats samples parsed from {args.logfile}")
 
-    busy = [s for s in samples if s["gpu_pct"] > args.busy_above]
+    runs = busy_runs(samples, args.busy_above)
+    trimmed = trim_edges(runs, args.trim_edges)
+    busy = trimmed["samples"]
     idle = [s for s in samples if s["gpu_pct"] <= args.busy_above]
+    untrimmed = sum(len(run) for run in runs)
     if not busy:
         raise SystemExit(
-            f"no sample above {args.busy_above}% GPU: either the run was not "
-            f"logged or the threshold is wrong"
+            f"no busy window survived trimming: {untrimmed} of {len(samples)} "
+            f"samples were above {args.busy_above}% GPU, in {len(runs)} stretch(es). "
+            "Either the run was not logged or --busy-above is wrong."
         )
 
     summary = {
         "logfile": os.path.basename(args.logfile),
         "samples": len(samples),
         "busy_above_gpu_pct": args.busy_above,
+        "busy_stretches": len(runs),
+        "trim_edges": args.trim_edges,
         "busy_samples": len(busy),
+        "busy_samples_before_trim": untrimmed,
+        "dropped_short_runs": trimmed["dropped_short_runs"],
         "idle_samples": len(idle),
         "busy": {field: stats(busy, field) for field, _, _, _ in FIELDS},
         "idle": {field: stats(idle, field) for field, _, _, _ in FIELDS},
     }
 
-    print(f"{len(samples)} samples at 1 Hz: {len(busy)} busy, {len(idle)} idle")
-    print(f"(busy means GPU utilisation above {args.busy_above:.0f}%)\n")
+    print(f"{len(samples)} samples at 1 Hz: {untrimmed} busy, {len(idle)} idle")
+    print(f"(busy means GPU utilisation above {args.busy_above:.0f}%)")
+    print(
+        f"{len(runs)} busy stretch(es), {args.trim_edges} sample(s) trimmed from each "
+        f"end: {len(busy)} remain"
+    )
+    if trimmed["dropped_short_runs"]:
+        print(
+            f"{trimmed['dropped_short_runs']} stretch(es) too short to trim were "
+            "dropped whole"
+        )
+    print()
     print(f"{'quantity':<26}{'busy p50':>12}{'busy min':>12}{'busy max':>12}{'idle p50':>12}")
     for field, label, unit, digits in FIELDS:
         b, i = summary["busy"].get(field), summary["idle"].get(field)
@@ -153,13 +248,8 @@ def main() -> int:
         cells.append(f"{i['p50']:.{digits}f}" if i else "-")
         print(f"{label + ' (' + unit + ')':<26}" + "".join(f"{c:>12}" for c in cells))
 
-    gpu = summary["busy"]["gpu_mhz"]
-    if gpu["min"] == gpu["max"]:
-        print(f"\nGPU clock pinned at {gpu['max']:.0f} MHz for all {gpu['n']} busy samples.")
-        print("No clock sag, so this run was not thermally or power throttled.")
-    else:
-        print(f"\nGPU clock varied: {gpu['min']:.0f} - {gpu['max']:.0f} MHz over {gpu['n']} samples.")
-        print("A clock below the power mode's ceiling means throttling. Check tj and VDD_IN.")
+    print()
+    print(clock_verdict(summary["busy"]["gpu_mhz"]))
 
     if args.out:
         os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
