@@ -43,13 +43,15 @@ def report(tokens, inference, processor=0.2641, generate=None, **overrides):
     return out
 
 
-def run(tmp_path, a, b, argv_extra=()):
-    pa, pb = tmp_path / "a.json", tmp_path / "b.json"
-    pa.write_text(json.dumps(a))
-    pb.write_text(json.dumps(b))
+def run(tmp_path, *reports, argv_extra=()):
+    paths = []
+    for i, data in enumerate(reports):
+        path = tmp_path / f"run{i}.json"
+        path.write_text(json.dumps(data))
+        paths.append(str(path))
     out = tmp_path / "decomp.json"
     saved = sys.argv
-    sys.argv = ["decompose_inference", str(pa), str(pb), "--out", str(out), *argv_extra]
+    sys.argv = ["decompose_inference", *paths, "--out", str(out), *argv_extra]
     try:
         decompose.main()
     finally:
@@ -68,7 +70,7 @@ def test_a_run_predating_the_split_uses_the_other_run_s_processor(tmp_path):
     old = report(19, 6.0878, processor=None)
     new = report(22, 6.3551, generate=6.0911)
     result = run(tmp_path, old, new)
-    assert result["generate_s"][0] == pytest.approx(6.0878 - 0.2641)
+    assert result["points"][0][1] == pytest.approx(6.0878 - 0.2641)
     assert result["per_token_s"] == pytest.approx(0.0891, abs=0.0002)
     assert result["prefill_s"] == pytest.approx(4.130, abs=0.002)
     assert result["decode_s"] == pytest.approx(1.961, abs=0.002)
@@ -112,6 +114,85 @@ def test_equal_token_counts_cannot_separate_anything(tmp_path):
     b = report(22, 6.3600, generate=6.0960)
     with pytest.raises(SystemExit, match="cannot separate"):
         run(tmp_path, a, b)
+
+
+# --------------------------------------------------------------------------
+# Fitting more than two points
+#
+# Two points fit a line exactly, so a two-point estimate cannot be checked.
+# The first three real runs had pairwise slopes of 73, 89 and 97 ms per token
+# against a three-point fit of 90 ms with residuals under 10 ms. Two of the
+# three pairs would have been off by 15% and looked authoritative.
+# --------------------------------------------------------------------------
+
+
+def test_the_fit_uses_every_run(tmp_path):
+    result = run(
+        tmp_path,
+        report(19, 6.0878, generate=5.8237),
+        report(20, 6.1639, generate=5.8970),
+        report(22, 6.3551, generate=6.0911),
+    )
+    assert result["per_token_s"] == pytest.approx(0.0903, abs=0.0002)
+    assert result["prefill_s_fitted"] == pytest.approx(4.102, abs=0.002)
+    assert result["worst_residual_s"] == pytest.approx(0.010, abs=0.001)
+
+
+def test_the_fit_is_not_just_the_first_and_last_pair(tmp_path):
+    # 19 -> 22 alone gives 89.1 ms. The middle point moves it.
+    three = run(
+        tmp_path,
+        report(19, 6.0878, generate=5.8237),
+        report(20, 6.1639, generate=5.8970),
+        report(22, 6.3551, generate=6.0911),
+    )
+    two = run(
+        tmp_path,
+        report(19, 6.0878, generate=5.8237),
+        report(22, 6.3551, generate=6.0911),
+    )
+    assert two["per_token_s"] == pytest.approx(0.0891, abs=0.0002)
+    assert three["per_token_s"] != pytest.approx(two["per_token_s"], abs=0.0005)
+
+
+def test_a_bent_line_shows_up_in_the_residuals(tmp_path):
+    # Per-token cost that is not flat is the assumption most likely to fail,
+    # and with three points it stops being an assumption.
+    result = run(
+        tmp_path,
+        report(10, 4.2, generate=4.0),
+        report(20, 5.2, generate=5.0),
+        report(40, 12.2, generate=12.0),
+    )
+    # The three real runs fit to within 10 ms. A bend shows up two orders of
+    # magnitude above that, so the residual distinguishes them easily.
+    assert result["worst_residual_s"] > 0.5
+
+
+def test_one_baseline_is_not_enough(tmp_path):
+    path = tmp_path / "only.json"
+    path.write_text(json.dumps(report(22, 6.3551, generate=6.0911)))
+    saved = sys.argv
+    sys.argv = ["decompose_inference", str(path)]
+    try:
+        with pytest.raises(SystemExit, match="at least two"):
+            decompose.main()
+    finally:
+        sys.argv = saved
+
+
+def test_a_mismatched_third_run_is_caught_against_the_first(tmp_path):
+    # Checked against the first run, so a bad file cannot slip through by
+    # matching its neighbour.
+    c = report(25, 6.6, generate=6.3)
+    c["generation_policy"]["image_resolution"] = "640x480"
+    with pytest.raises(SystemExit, match="not comparable"):
+        run(
+            tmp_path,
+            report(19, 6.0878, generate=5.8237),
+            report(22, 6.3551, generate=6.0911),
+            c,
+        )
 
 
 def test_more_tokens_but_faster_means_something_else_differs(tmp_path):
