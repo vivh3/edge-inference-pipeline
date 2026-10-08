@@ -1,0 +1,66 @@
+{
+  "duration_s": 755.167,
+  "records": 94,
+  "unparseable": 0,
+  "failures": {},
+  "invalid_output_rate": 0.0,
+  "first_minute_result_age_p50": 6.443838,
+  "last_minute_result_age_p50": 6.46586,
+  "queue_age": {
+    "n": 94,
+    "min": 0.00746,
+    "p50": 0.019257,
+    "p90": 0.034512,
+    "max": 0.300617
+  },
+  "preprocess_s": {
+    "n": 94,
+    "min": 0.00217,
+    "p50": 0.003352,
+    "p90": 0.004226,
+    "max": 0.114006
+  },
+  "inference_latency": {
+    "n": 94,
+    "min": 6.235037,
+    "p50": 6.438066,
+    "p90": 6.455354,
+    "max": 6.648848
+  },
+  "post_processing": {
+    "n": 94,
+    "min": 0.000573,
+    "p50": 0.000631,
+    "p90": 0.00072,
+    "max": 0.003319
+  },
+  "result_age": {
+    "n": 94,
+    "min": 6.270038,
+    "p50": 6.463847,
+    "p90": 6.485405,
+    "max": 6.804435
+  },
+  "consumer_age": {
+    "n": 94,
+    "min": 6.280335,
+    "p50": 6.473616,
+    "p90": 6.493177,
+    "max": 6.830833
+  },
+  "system_available_mb": {
+    "n": 94,
+    "min": 418.3,
+    "p50": 425.6,
+    "p90": 430.0,
+    "max": 433.1
+  },
+  "power_w": {
+    "n": 94,
+    "min": 14.94,
+    "p50": 15.51,
+    "p90": 15.55,
+    "max": 15.59
+  },
+  "note": "consumer_age is capture -> this subscriber. result_age ends at publish inside the inference process."
+}
