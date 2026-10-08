@@ -35,8 +35,8 @@ component that keeps up with its sensor produces no overload behaviour to engine
 |---|---|---|
 | 0 | Core: admission policies, output contract, failure taxonomy, telemetry, overload experiment | **done** |
 | 1 | Jetson feasibility: model running, memory headroom, measured camera rate, baseline latency | **done** |
-| 2 | ROS 2 integration, performance budget, end-to-end on device | not started |
-| 3 | Nsight profiling, bottleneck root cause, one justified fix, sustained load | not started |
+| 2 | ROS 2 integration, performance budget, end-to-end on device | **done** |
+| 3 | Profiling, bottleneck root cause, one justified fix | sustained load **done**, profiling open |
 | 4 | Diagram, demo video, results, v0.1 | not started |
 
 Numbers not yet measured are marked `TBD` in `docs/`. No estimate is recorded as a
@@ -282,21 +282,50 @@ and is not comparable across them. Captured, dropped and published are unambiguo
 
 ## Performance budget
 
-> Set in Gate 2 from the Gate 1 baseline, not before. See
-> [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
-
 Called a *performance budget*, never an SLO. An SLO derives from system or user
-requirements. This number will derive from what the hardware turned out to do, which
-is a different thing. Measuring first and then setting a target is normal when there
-is no external requirement; the honesty is in the label.
+requirements. This derives from what the hardware turned out to do, which is a
+different thing. Measuring first and then setting a target is normal when there is no
+external requirement; the honesty is in the label.
+
+Set from the Gate 1 baseline of 6088 ms, then met end to end over a 12.5-minute run
+of 94 published records. Derivation and caveats in
+[`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
+
+| budget | target | measured |
+|---|---|---|
+| result age p50 | <= 6.5 s | **6.464 s** |
+| result age p90 | <= 6.6 s | 6.485 s |
+| invalid-output rate | <= 35% | 0% on a representative scene |
+| sustained 10 min | p50 within 10% first minute vs last, no `stalled` or `engine_dead` | **0.34% drift**, `healthy` throughout |
+
+The pipeline costs 12 ms per cycle: successive results are 6.447 s apart against
+6.438 s of inference, a 99.8% duty cycle. Everything that is not the model —
+queueing, preprocessing, validation, publishing — rounds to nothing.
+
+An earlier attempt at the sustained run returned 94 records of which every one failed
+validation, because the camera was face down. Re-pointed, the invalid rate is 0% and
+latency rises 4%: scene content is a latency input, since output length drives
+generation time and the frozen generation policy cannot fix what the camera sees.
 
 ---
 
 ## The bottleneck investigation
 
-> Gate 3, pending hardware. Method, hypothesis template, and the trace signature of
-> each candidate are in [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md). Nsight trace
-> screenshot goes here.
+> Gate 3, in progress. Method, hypothesis written before profiling, and the trace
+> signature of each candidate are in [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
+
+Four of six candidates are eliminated from a 1 Hz resource log over the sustained run
+(`results/sustained/`): the GPU reads 90–100% in 550 of 752 samples with its clock's
+10th percentile on the 15W ceiling, tj plateaus at 62.8 °C, and memory does not move.
+That rules out host-to-device transfer, synchronisation stalls, thermal throttling and
+memory pressure.
+
+What is left is on-GPU work plus one thing the instrumentation cannot currently
+separate: `inference_latency` spans both the engine's CPU-side `processor` call and
+`generate` on the GPU. A sub-90% GPU window recurs once per 6.4 s inference cycle,
+and its depth implies roughly 7% of inference runs off the GPU — inferred from 1 Hz
+aliasing, so a direction rather than a measurement. Splitting that stamp is the next
+step.
 
 The hypothesis is written down before profiling. Being wrong is a good README
 section. If the evidence supports none of the obvious tools, the result is
