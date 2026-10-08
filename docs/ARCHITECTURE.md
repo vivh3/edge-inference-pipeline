@@ -41,7 +41,7 @@ Gate 1 measurements so far: Jetson Orin Nano Super, JetPack 6.2 / L4T 36.4.3,
   structured JSON output   <-- explicit unknown states, always well-formed
       |
       v
-  mock consumer            <-- logger / dashboard. Nothing safety-flavoured.
+  consumer_node            <-- advisory state at 10 Hz. Logged, never actuated.
 
   telemetry taps: queue age, inference latency, post-processing, result age,
                   drop rate, invalid-output rate, extraction rate, RSS, power,
@@ -59,12 +59,15 @@ flowchart LR
     cap["capture_node<br/>stamps frame_id<br/>+ capture_ts"]
     inf["inference_node<br/>admission -> model<br/>-> validation"]
     tel["telemetry_node<br/>CSV + summary<br/>per record"]
+    con["consumer_node<br/>decides at 10 Hz<br/>proceed / hold / no_data"]
     mw(["middleware loss<br/>10-28% of frames"])
     pol(["policy drop<br/>98.7% of arrivals"])
 
     cam -->|"UVC, MJPG 640x480"| cap
     cap -->|"/frames · StampedFrame<br/>BEST_EFFORT · KEEP_LAST 1"| inf
     inf -->|"/perception · String JSON<br/>RELIABLE · KEEP_LAST 100"| tel
+    inf -->|"/perception"| con
+    con -->|"/advisory · String JSON"| out["advisory<br/>logged, not actuated"]
     cap -.->|"never arrive"| mw
     inf -.->|"admitted and discarded"| pol
 ```
@@ -94,6 +97,39 @@ The rate is not stable, either, which is itself worth recording: middleware
 loss fell from 28% to 10% over one twelve-minute run as the process settled,
 with no change in configuration. A single number quoted from the first minute
 would have been wrong by a factor of three.
+
+## The consumer decides faster than the producer produces
+
+`consumer_node` is the same idea as the admission policy, at the other end.
+Results arrive every ~6.4 s and it decides at 10 Hz, so **on 98% of ticks
+there is no new information** and the only honest question is how old the
+newest record is.
+
+| decision | when |
+| --- | --- |
+| `proceed` | fresh, valid, `clear` with no obstacle |
+| `hold` | stale, or unusable semantics, or an obstacle reported |
+| `no_data` | nothing yet, or the last record aged past the limit |
+
+So a record goes stale with no new input arriving and the state falls back on
+a timer. A consumer that re-evaluated only on arrival would hold a six-second
+view of the world as current for as long as the engine stayed quiet, which is
+the failure the whole project is about, reintroduced one hop downstream.
+
+**Staleness is checked before semantics.** Age comes from `capture_ts`, which
+the capture node stamped and no model output ever touched, so that check still
+works when everything downstream of the camera is suspect. Semantics are only
+consulted once the record has earned the right to be read.
+
+`hold` and `no_data` are separate because their causes are: `hold` means the
+system told us something, `no_data` means it has stopped telling us anything.
+And the node reports *time* in each state rather than counts, because a count
+at 10 Hz measures the tick rate, not the system.
+
+**It actuates nothing.** The advisory is published and logged. `proceed` is
+not a claim that anything is safe, and there is no interlock behind it. The
+node exists because a contract nobody has written a consumer against is a
+contract whose gaps are undiscovered.
 
 ## The trust boundary
 
