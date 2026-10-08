@@ -20,6 +20,7 @@ setup(
         "console_scripts": [
             "capture_node = edge_perception.capture_node:main",
             "inference_node = edge_perception.inference_node:main",
+            "telemetry_node = edge_perception.telemetry_node:main",
         ],
     },
 )
