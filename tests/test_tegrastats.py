@@ -185,3 +185,51 @@ def test_a_real_sag_is_called_throttling():
     message = verdict(420, 612, n=148)
     assert "sagged" in message
     assert "Check tj and VDD_IN" in message
+
+
+# --------------------------------------------------------------------------
+# Drift
+#
+# A distribution says what a run cost; it cannot say whether the run settled.
+# The real log shows no clock sag and tj climbing 6.5 C from the first ten
+# seconds to the last, which scopes "not thermally limited" to a run of that
+# length rather than to the board.
+# --------------------------------------------------------------------------
+
+WARM = BUSY.replace("tj@58.312C", "tj@61.400C")
+
+
+def test_drift_compares_the_ends_of_one_stretch():
+    run = [tegrastats.parse_line(BUSY)] * 2 + [tegrastats.parse_line(WARM)] * 2
+    moved = tegrastats.drift(run, window=2)
+    assert moved["tj_c"]["first"] == pytest.approx(58.312)
+    assert moved["tj_c"]["last"] == pytest.approx(61.4)
+    assert moved["tj_c"]["delta"] == pytest.approx(3.088)
+
+
+def test_a_stretch_too_short_for_two_windows_gets_no_drift():
+    run = [tegrastats.parse_line(BUSY)] * 5
+    assert tegrastats.drift(run, window=2) is not None
+    assert tegrastats.drift(run, window=3) is None
+
+
+def test_drift_uses_the_longest_stretch_not_the_whole_busy_set(tmp_path):
+    # Weight loading and warmup are their own short stretches. Comparing
+    # first-to-last across all of them would call the difference between
+    # loading and inference "drift".
+    loading = BUSY.replace("tj@58.312C", "tj@40.000C")
+    summary = summarize(
+        tmp_path,
+        [loading] * 3 + [IDLE] + [BUSY] * 4 + [WARM] * 4 + [IDLE],
+        ("--drift-window", "2"),
+    )
+    assert summary["busy_stretches"] == 2
+    assert summary["drift"]["stretch_samples"] == 6
+    # 40 C never appears: the loading stretch is not the longest one.
+    assert summary["drift"]["fields"]["tj_c"]["first"] == pytest.approx(58.312)
+    assert summary["drift"]["fields"]["tj_c"]["last"] == pytest.approx(61.4)
+
+
+def test_drift_is_absent_rather_than_guessed_when_the_run_is_short(tmp_path):
+    summary = summarize(tmp_path, [IDLE] + [BUSY] * 5 + [IDLE])
+    assert summary["drift"]["fields"] is None

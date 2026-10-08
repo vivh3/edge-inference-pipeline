@@ -118,6 +118,37 @@ def trim_edges(
     return {"samples": kept, "dropped_short_runs": dropped_runs}
 
 
+def drift(
+    run: List[Dict[str, float]], window: int
+) -> Optional[Dict[str, Dict[str, float]]]:
+    """Mean of the first `window` samples against the last, within one stretch.
+
+    A distribution says what a run cost; it cannot say whether the run had
+    settled. The same 142 samples that show no clock sag also show tj climbing
+    6.6 C from the first ten seconds to the last, still rising at the end --
+    which scopes "not thermally limited" to a run of this length rather than
+    to the board.
+
+    Compared within a single stretch, never across the whole busy set: the
+    stretches are different activities (weight loading, warmup, the measured
+    runs) and a first-to-last across all of them would compare loading with
+    inference and call the difference drift.
+    """
+    # Two windows that overlap would share samples, double-counting them and
+    # understating the movement. Disjoint is the only requirement.
+    if len(run) < 2 * window:
+        return None
+    out = {}
+    for field, _, _, _ in FIELDS:
+        head = [s[field] for s in run[:window] if field in s]
+        tail = [s[field] for s in run[-window:] if field in s]
+        if not head or not tail:
+            continue
+        first, last = sum(head) / len(head), sum(tail) / len(tail)
+        out[field] = {"first": first, "last": last, "delta": last - first}
+    return out
+
+
 # A clock this close to the ceiling is the sampling interval, not the governor.
 _AT_CEILING = 0.98
 
@@ -193,6 +224,13 @@ def main() -> int:
         help="samples to drop from each end of each busy stretch (default 1); "
         "0 keeps them, which puts interval-averaged values in the minimum column",
     )
+    p.add_argument(
+        "--drift-window",
+        type=int,
+        default=10,
+        help="samples at each end of the longest busy stretch to compare, for "
+        "whether the run had settled (default 10)",
+    )
     p.add_argument("--out", help="write the summary as JSON")
     args = p.parse_args()
 
@@ -227,6 +265,17 @@ def main() -> int:
         "idle": {field: stats(idle, field) for field, _, _, _ in FIELDS},
     }
 
+    # The longest stretch is the measured work: warmup and weight loading are
+    # their own, shorter stretches.
+    longest = max(runs, key=len)
+    longest_trimmed = longest[args.trim_edges : len(longest) - args.trim_edges]
+    moved = drift(longest_trimmed, args.drift_window)
+    summary["drift"] = {
+        "stretch_samples": len(longest_trimmed),
+        "window": args.drift_window,
+        "fields": moved,
+    }
+
     print(f"{len(samples)} samples at 1 Hz: {untrimmed} busy, {len(idle)} idle")
     print(f"(busy means GPU utilisation above {args.busy_above:.0f}%)")
     print(
@@ -247,6 +296,28 @@ def main() -> int:
         cells = [f"{b[k]:.{digits}f}" for k in ("p50", "min", "max")]
         cells.append(f"{i['p50']:.{digits}f}" if i else "-")
         print(f"{label + ' (' + unit + ')':<26}" + "".join(f"{c:>12}" for c in cells))
+
+    if moved:
+        print(
+            f"\ndrift within the longest stretch ({len(longest_trimmed)} samples), "
+            f"first {args.drift_window} against last {args.drift_window}:\n"
+        )
+        print(f"{'quantity':<26}{'first':>12}{'last':>12}{'delta':>12}")
+        for field, label, unit, digits in FIELDS:
+            d = moved.get(field)
+            if not d:
+                continue
+            print(
+                f"{label + ' (' + unit + ')':<26}"
+                f"{d['first']:>12.{digits}f}{d['last']:>12.{digits}f}"
+                f"{d['delta']:>+12.{digits}f}"
+            )
+        print("\nA quantity still moving at the end had not settled in this run.")
+    else:
+        print(
+            f"\nlongest stretch is {len(longest_trimmed)} samples, too short for a "
+            f"first-{args.drift_window} against last-{args.drift_window} comparison"
+        )
 
     print()
     print(clock_verdict(summary["busy"]["gpu_mhz"]))

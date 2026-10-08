@@ -234,30 +234,60 @@ and what each would look like in a trace:
 
 ### Evidence already in hand, from the Gate 1 baseline
 
-`jtop` during 20 measured inferences of SmolVLM2-2.2B at float16, 15W. Taken
-during the pre-correction run, so the memory rows describe its 640x480 input.
-Utilisation, clocks, power and temperature are not latency figures, so the
-conclusions below stand.
+`tegrastats` at 1 Hz across a 20-run baseline at 448x448, 15W: 501 samples,
+`results/baseline/tegrastats-448.log`, summarised by
+`tools/summarize_tegrastats.py`. The busy window is the 142 samples above 50%
+GPU, one trimmed from each end of each stretch because tegrastats reports the
+mean over its interval and a straddling sample averages a working GPU with an
+idle one.
 
-| quantity | during inference | idle |
-| --- | --- | --- |
-| GPU utilisation | **99.7 - 99.8%** | 0% |
-| GPU clock | 612 MHz, the 15W ceiling | 306 MHz |
-| EMC | 2.1 GHz, against a 2133 MHz cap | 204 MHz |
-| CPU, busiest core | 38% (the python process) | 14% |
-| process memory | 1.2 GB CPU **+ 5.1 GB GPU** | - |
-| system memory | 6.9 GB of 7.4 GB, 369 MB swapped | 3.5 GB, no swap |
-| VDD_IN | 15.9 - 16.9 W | 5.9 W |
-| tj | 57 - 59 C, fan 38 - 43% | 50 C |
+| quantity | busy p50 | busy range | idle p50 |
+| --- | --- | --- | --- |
+| GPU utilisation | **99%** | 77 - 99% | 0% |
+| GPU clock | 611 MHz | 607 - 612, the 15W ceiling | 305 MHz |
+| EMC clock | 2133 MHz, its cap | pinned | 204 MHz |
+| EMC utilisation | 54% | 36 - 67% | 15% |
+| CPU, busiest core | 40% | 0 - 87% | 1% |
+| CPU, summed over 6 cores | 41% | 0 - 109% | 1% |
+| system RAM used | 6939 MB of 7620 | 6759 - 6944 | 1343 MB |
+| swap used | 412 MB | 167 - 413 | 165 MB |
+| tj | 59.1 C | 51.2 - 61.4 | 50.1 C |
+| VDD_IN | 15.6 W | 13.6 - 17.0 | 5.3 W |
 
-This rules out three of the six candidates before any profiler runs. A GPU at
-99.8% is not idling behind CPU preprocessing, not waiting on a synchronous
-host-to-device copy, and not stalling on synchronisation. Those all show as
-GPU idle gaps, and there are none. CPU is 38% on one core and near zero on the
-other five.
+This replaces three jtop screenshots read off at three arbitrary moments. A
+screenshot cannot answer the question the table exists to answer -- whether the
+clock *held* -- and nobody else can regenerate one.
 
-It also rules out thermal throttling. 59 C on a part that throttles far higher,
-with the fan at 43%, is not a thermally limited board.
+The ranges include the start of the run, which is why the minima look idle:
+the board began cold. Within the measured stretch, first ten samples against
+last ten:
+
+| quantity | first | last | delta |
+| --- | --- | --- | --- |
+| tj | 54.6 C | 61.1 C | **+6.5** |
+| system RAM used | 6939 MB | 6942 MB | +4 |
+| swap used | 413 MB | 412 MB | -1 |
+| GPU clock | 610 MHz | 612 MHz | +1 |
+| VDD_IN | 15.5 W | 15.8 W | +0.3 |
+
+Three of the six candidates are ruled out before any profiler runs. A GPU at
+99% is not idling behind CPU preprocessing, not waiting on a synchronous
+host-to-device copy, and not stalling on synchronisation. All three show as
+GPU idle gaps, and there are none.
+
+Memory is ruled out as well, and the drift table is why rather than the
+distribution: RAM and swap do not move across the measured window. The growth
+from 167 MB to 413 MB of swap happened during weight loading, before the first
+timed run.
+
+**Thermal throttling is ruled out for a run of this length, and no further.**
+The clock held 607 - 612 MHz, within 0.8% of the ceiling, so nothing stepped
+down. But tj climbed 6.5 C across 131 seconds and was still climbing at the
+end, so this says a 2.5-minute run is not thermally limited -- not that the
+board is not. A ten-minute run is the measurement that would settle it, and it
+is the last open row in the budget table. The 20 service times spanned 6069 -
+6096 ms while tj rose 6.5 C, so within this range temperature does not move
+latency; that is a different claim from the board never throttling.
 
 What is left is on-GPU work: prefill, decode, or both. The arithmetic says to
 check prefill first. 6088 ms for 19 output tokens is 320 ms per token if decode
