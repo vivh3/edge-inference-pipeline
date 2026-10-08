@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from inference.clock import CLOCK_NAME, wall_clock_iso
 from inference.config import DEFAULT_POLICY
 from inference.engine import MockEngine, VlmEngine
+from inference.preprocess import Preprocessor
 from inference.schema import validate
 from telemetry.metrics import jetson_power_rail_names, percentile, read_jetson_power_w, read_rss_bytes
 
@@ -71,9 +72,21 @@ def snapshot(label: str) -> dict:
 
 
 def load_image(path: str):
-    from PIL import Image
+    """Load a frame the way the camera delivers one: a BGR array from OpenCV.
 
-    return Image.open(path).convert("RGB")
+    Not PIL. The pipeline's input is a bgr8 array off a UVC camera, and the
+    baseline has to measure the model on what the pipeline actually produces.
+    An earlier version opened the file with PIL and handed the engine a
+    640x480 image directly, bypassing the frozen 448x448 generation policy,
+    and the resulting baseline was 25% faster than the same model in the
+    pipeline because it was not the same input.
+    """
+    import cv2  # type: ignore
+
+    image = cv2.imread(path)
+    if image is None:
+        raise SystemExit(f"could not read {path}")
+    return image
 
 
 def main() -> int:
@@ -105,7 +118,11 @@ def main() -> int:
     else:
         engine = VlmEngine(args.model, device=args.device, dtype=args.dtype,
                            revision=args.revision)
-        image = load_image(args.image)
+        # The same stage the pipeline runs, so the baseline measures the model
+        # on the input the pipeline gives it: frozen resolution, RGB order.
+        preprocessor = Preprocessor(DEFAULT_POLICY)
+        preprocessor.warmup()
+        image = preprocessor.run(load_image(args.image)).image
 
     # Warmup is discarded: the first invocations pay for CUDA context creation,
     # kernel autotuning and allocator growth, which describe startup rather than
@@ -150,7 +167,7 @@ def main() -> int:
         print(f"\ncontract over {len(frames)} probe frames ...", flush=True)
         per_frame, probe_outcomes = [], Counter()
         for path in frames:
-            raw = engine.infer(load_image(path))
+            raw = engine.infer(preprocessor.run(load_image(path)).image)
             _, rep = validate(raw.text)
             probe_outcomes[rep.failure.value] += 1
             per_frame.append({

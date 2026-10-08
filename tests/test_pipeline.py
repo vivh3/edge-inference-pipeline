@@ -288,3 +288,26 @@ def test_preprocess_time_is_reported_not_buried_in_queue_age():
     result = published[0]
     assert result.preprocess_s == pytest.approx(0.05, abs=0.01)
     assert result.queue_age >= result.preprocess_s
+
+
+def test_the_preprocessor_is_warmed_before_any_frame_is_timed():
+    """The backend import is a startup cost, not a per-frame one.
+
+    Resolving the backend imports OpenCV, which takes seconds on a Jetson.
+    Left to the first run() it lands inside that frame's measured duration:
+    2.709s against a steady-state 0.004s on real hardware.
+    """
+    engine = MockEngine(mean_latency=0.01, seed=1)
+    pipe, _, _ = build(engine)
+    resolved = []
+
+    original = pipe.preprocessor.warmup
+
+    def record():
+        resolved.append(True)
+        return original()
+
+    pipe.preprocessor.warmup = record
+    pipe.start()
+    pipe.stop()
+    assert resolved, "Pipeline.start must warm the preprocessor"

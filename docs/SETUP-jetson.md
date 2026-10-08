@@ -451,7 +451,13 @@ cache, CUDA context, image tensors and the OS all share the same 8 GB, and
 physical memory on a Jetson is unified so there is no separate device pool to
 fall back on.
 
-Measured at 15W on an Orin Nano Super, one probe frame repeated 20 times:
+Measured at 15W on an Orin Nano Super, one probe frame repeated 20 times. Both
+columns come from the pre-correction baseline tool, which fed the model 640x480
+instead of the frozen 448x448 (`docs/PERFORMANCE.md`). They are kept as measured
+because they are comparable to each other, which is what a model choice needs;
+the 2.2B's latency under the frozen policy is 6088 ms, not 4930 ms. Re-measuring
+it changed the contract rate not at all -- still 7/10, same three failures -- so
+the selection stands.
 
 | quantity | SmolVLM2-2.2B | SmolVLM2-500M |
 | --- | --- | --- |
