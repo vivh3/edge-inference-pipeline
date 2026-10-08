@@ -81,19 +81,21 @@ def summarize(tmp_path, lines, argv_extra=()):
 
 
 def test_splits_busy_from_idle(tmp_path):
-    summary = summarize(tmp_path, [IDLE] * 7 + [BUSY] * 3)
-    assert summary["samples"] == 10
-    assert summary["busy_samples"] == 3
+    summary = summarize(tmp_path, [IDLE] * 7 + [BUSY] * 5)
+    assert summary["samples"] == 12
+    assert summary["busy_samples_before_trim"] == 5
+    assert summary["busy_samples"] == 3  # one trimmed from each end
     assert summary["idle_samples"] == 7
-    # The whole point of the split: a mean over all ten samples would report a
-    # GPU neither busy nor idle ever was.
+    # The whole point of the split: a mean over all twelve samples would report
+    # a GPU neither busy nor idle ever was.
     assert summary["busy"]["gpu_pct"]["p50"] == 99.0
     assert summary["idle"]["gpu_pct"]["p50"] == 0.0
 
 
 def test_a_sagging_clock_is_visible(tmp_path):
+    # The sagged sample sits mid-stretch so trimming cannot remove it.
     sagged = BUSY.replace("99%@[612]", "99%@[510]")
-    summary = summarize(tmp_path, [IDLE] + [BUSY] * 2 + [sagged])
+    summary = summarize(tmp_path, [IDLE, BUSY, BUSY, sagged, BUSY, IDLE])
     gpu = summary["busy"]["gpu_mhz"]
     assert gpu["min"] == 510.0 and gpu["max"] == 612.0
 
@@ -103,3 +105,83 @@ def test_a_log_with_no_busy_window_is_an_error_not_a_summary(tmp_path):
     # mode worth being loud about.
     with pytest.raises(SystemExit):
         summarize(tmp_path, [IDLE] * 5)
+
+
+# --------------------------------------------------------------------------
+# Edge trimming
+#
+# tegrastats reports the mean over its interval, so a sample straddling the
+# start or end of the busy window mixes a working GPU with an idle one. The
+# first real log this tool saw reported "CPU busiest core: 0%" and "VDD_IN:
+# 11.5 W" as busy minima, neither of which can happen during an inference.
+# --------------------------------------------------------------------------
+
+# 99% GPU but idle-looking everything else: what a straddling sample looks like.
+EDGE = BUSY.replace("38%@1497", "0%@1497").replace("16321mW", "11500mW")
+
+
+def test_trimming_drops_the_straddling_samples(tmp_path):
+    summary = summarize(tmp_path, [IDLE] + [EDGE] + [BUSY] * 4 + [EDGE] + [IDLE])
+    assert summary["busy_samples_before_trim"] == 6
+    assert summary["busy_samples"] == 4
+    assert summary["busy"]["cpu_busiest_pct"]["min"] == 38.0
+    assert summary["busy"]["vdd_in_w"]["min"] == pytest.approx(16.321)
+
+
+def test_trimming_can_be_turned_off(tmp_path):
+    summary = summarize(
+        tmp_path, [IDLE] + [EDGE] + [BUSY] * 4 + [EDGE] + [IDLE], ("--trim-edges", "0")
+    )
+    assert summary["busy_samples"] == 6
+    assert summary["busy"]["vdd_in_w"]["min"] == pytest.approx(11.5)
+
+
+def test_each_stretch_is_trimmed_separately(tmp_path):
+    # Warmup and the measured runs are separated by a gap, so a log has more
+    # than one busy stretch and each has its own two edges.
+    summary = summarize(
+        tmp_path, [BUSY] * 5 + [IDLE] * 3 + [BUSY] * 5 + [IDLE]
+    )
+    assert summary["busy_stretches"] == 2
+    assert summary["busy_samples"] == 6
+
+
+def test_a_stretch_too_short_to_trim_is_dropped_whole(tmp_path):
+    summary = summarize(tmp_path, [BUSY] * 5 + [IDLE] * 3 + [BUSY] + [IDLE])
+    assert summary["busy_stretches"] == 2
+    assert summary["dropped_short_runs"] == 1
+    assert summary["busy_samples"] == 3
+
+
+def test_all_stretches_too_short_is_an_error(tmp_path):
+    with pytest.raises(SystemExit):
+        summarize(tmp_path, [IDLE, BUSY, IDLE, BUSY, IDLE])
+
+
+# --------------------------------------------------------------------------
+# The throttling verdict
+# --------------------------------------------------------------------------
+
+
+def verdict(low, high, n=100):
+    return tegrastats.clock_verdict({"min": low, "max": high, "n": n})
+
+
+def test_a_pinned_clock_reads_as_not_throttled():
+    message = verdict(612, 612)
+    assert "pinned at 612 MHz" in message
+    assert "neither thermally nor power throttled" in message
+
+
+def test_a_few_mhz_below_the_ceiling_is_not_throttling():
+    # The real log read 607-612 MHz and the first version of this tool called
+    # it throttling. 607 is 99.2% of 612: that is the sampling interval.
+    message = verdict(607, 612, n=148)
+    assert "held the ceiling" in message
+    assert "was not throttled" in message
+
+
+def test_a_real_sag_is_called_throttling():
+    message = verdict(420, 612, n=148)
+    assert "sagged" in message
+    assert "Check tj and VDD_IN" in message
