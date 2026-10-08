@@ -36,10 +36,9 @@ OUT="$REPO/results/sustained"
 LOGS="$OUT/logs"
 mkdir -p "$LOGS"
 
+# One place for the per-shell setup, so this and a human terminal agree.
 # shellcheck disable=SC1090,SC1091
-source "$REPO/.venv/bin/activate"
-source /opt/ros/humble/setup.bash
-source "$REPO/ros2_ws/install/setup.bash"
+source "$REPO/env.sh" > /dev/null
 cd "$REPO/ros2_ws"
 
 PIDS=()
