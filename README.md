@@ -82,11 +82,19 @@ so they port to the Jetson unchanged.
              drop rate, invalid-output rate, extraction rate, RSS, power, health
 ```
 
-Deployed, that is three ROS 2 nodes whose two topics are configured as opposites —
+Deployed, that is four ROS 2 nodes whose two main topics are configured as opposites —
 `/frames` BEST_EFFORT depth 1 because a stale frame has negative value, `/perception`
 RELIABLE depth 100 because a lost record would bias the distribution being measured.
 Node graph, QoS reasoning and the two kinds of loss:
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+`consumer_node` closes the loop and is the admission policy mirrored: it decides at
+10 Hz against a result every 6.4 s, so on 98% of ticks there is no new information and
+the only question is how old the newest record is. A record therefore goes stale with
+nothing arriving and the state falls back to `hold` on a timer — a consumer that
+re-evaluated only on arrival would treat a six-second-old view as current for as long
+as the engine stayed quiet, which is the project's own failure mode reintroduced one
+hop downstream. It actuates nothing; `proceed` is not a safety claim.
 
 ---
 

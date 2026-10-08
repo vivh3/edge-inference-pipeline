@@ -21,6 +21,7 @@ setup(
             "capture_node = edge_perception.capture_node:main",
             "inference_node = edge_perception.inference_node:main",
             "telemetry_node = edge_perception.telemetry_node:main",
+            "consumer_node = edge_perception.consumer_node:main",
         ],
     },
 )
