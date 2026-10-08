@@ -186,7 +186,12 @@ python3 tools/summarize_tegrastats.py run.log --out summary.json
 
 It splits samples into busy and idle by GPU utilisation, trims the ones
 straddling each boundary, and reports whether the run had settled by the end.
-`results/baseline/tegrastats-448.log` is the committed example.
+`results/sustained/tegrastats-sustained.log` is the committed example.
+
+**`--logfile` appends.** Reuse a filename and the file ends up holding several
+runs; that example holds four. The summariser splits on the time gaps and takes
+the last run, naming the others, so this is survivable -- but use a fresh name
+per run and there is nothing to survive.
 
 ---
 
