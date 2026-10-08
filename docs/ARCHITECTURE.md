@@ -48,6 +48,53 @@ Gate 1 measurements so far: Jetson Orin Nano Super, JetPack 6.2 / L4T 36.4.3,
                   health state
 ```
 
+## ROS 2 topology, and the one QoS decision that matters
+
+The dataflow above is the logical pipeline. Deployed, it is three nodes, and
+the interesting part is that the two topics are configured as opposites.
+
+```mermaid
+flowchart LR
+    cam["USB webcam<br/>30.027 fps measured"]
+    cap["capture_node<br/>stamps frame_id<br/>+ capture_ts"]
+    inf["inference_node<br/>admission -> model<br/>-> validation"]
+    tel["telemetry_node<br/>CSV + summary<br/>per record"]
+    mw(["middleware loss<br/>10-28% of frames"])
+    pol(["policy drop<br/>98.7% of arrivals"])
+
+    cam -->|"UVC, MJPG 640x480"| cap
+    cap -->|"/frames · StampedFrame<br/>BEST_EFFORT · KEEP_LAST 1"| inf
+    inf -->|"/perception · String JSON<br/>RELIABLE · KEEP_LAST 100"| tel
+    cap -.->|"never arrive"| mw
+    inf -.->|"admitted and discarded"| pol
+```
+
+| topic | reliability | depth | why |
+| --- | --- | --- | --- |
+| `/frames` | BEST_EFFORT | 1 | A stale frame has negative value, so losing one is the design rather than a cost. |
+| `/perception` | RELIABLE | 100 | A lost *record* removes a sample from the distribution being measured. Results arrive every 6 s against a queue of 100, so reliability is free here. |
+
+**The trap worth knowing.** A RELIABLE subscriber does not merely lose frames
+against a BEST_EFFORT publisher -- it never connects at all. The QoS profiles
+are incompatible, so the subscriber sits receiving nothing while every process
+involved looks healthy and `ros2 node list` shows both. Diagnose it with
+`ros2 topic info -v`, which prints each endpoint's profile.
+
+**Two losses, two names.** Frames disappear twice over and reporting one
+number would blame the middleware's losses on a design decision:
+
+- **Middleware loss**, 10-28%, before the policy ever sees the frame. The
+  board cannot deserialise 30 x 921,600 bytes per second, so DDS drops them.
+  Recovered from gaps in the trusted `frame_id` sequence, which is why that
+  field is stamped by the publisher rather than inferred downstream.
+- **Policy drop**, 98.7% of what arrives. Deliberate: capacity-1 overwrite,
+  newest frame wins.
+
+The rate is not stable, either, which is itself worth recording: middleware
+loss fell from 28% to 10% over one twelve-minute run as the process settled,
+with no change in configuration. A single number quoted from the first minute
+would have been wrong by a factor of three.
+
 ## The trust boundary
 
 This is the single most important line in the system, and it runs between
