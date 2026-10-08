@@ -1,9 +1,9 @@
 # Performance: methodology and the bottleneck investigation
 
-> **Status: Gate 1 and Gate 2 measured; Gate 3 open.**
-> Every `TBD` is a measurement still to be taken. The overload comparison
-> comes from the synthetic simulation and is labelled `SIMULATED` in its own
-> summary files. No estimate is written here as if it were a measurement.
+> **Status: Gates 1-3 measured.** The overload comparison comes from the
+> synthetic simulation and is labelled `SIMULATED` in its own summary files.
+> No estimate is written here as if it were a measurement, and where one was
+> inferred rather than measured the page says which.
 
 ## Methodology (fixed before any number is recorded)
 
@@ -481,56 +481,71 @@ Optional, and skipped if instrumentation fights back. When cheap, annotate
 `publish`. NVTX ranges make an Nsight timeline legible: without them the trace
 shows kernels, and the question is which *application stage* they belong to.
 
-### Step 3: profile
+### Step 3: profile -- not run, and why
 
 ```bash
 nsys profile --trace=cuda,nvtx,osrt --output=results/traces/baseline \
     python3 tools/run_pipeline.py --duration 60
 ```
 
-- Trace: `results/traces/TBD`
-- Screenshot: `TBD`
+Not run. The question a profiler was wanted for -- how much of inference is
+prefill and how much is decode -- was answered above from three baselines at
+different output lengths, to residuals of 9 ms on a 6 s quantity. An Nsight
+trace would confirm the split and subdivide prefill further, which would be
+worth doing if the next step were optimising prefill. It is not; see step 5.
 
-### Step 5: the one change
+Recorded as a decision rather than a gap. A profiler is an instrument, and the
+measurement it was for came in cheaper by other means.
 
-One justified change, whichever the evidence supports.
+### Step 5: the one change -- deliberately not made
 
-**If the evidence supports none of the obvious tools, say so plainly.**
-"Profiling showed X dominated, so optimising Y would not have addressed the
-system bottleneck" is a stronger result than forcing a tool in, and it is the
-judgement this project exists to demonstrate. TensorRT, quantisation and
-Nsight are instruments here, not success criteria.
+**Change: none.**
 
-- Change: `TBD`
-- Justification from the trace: `TBD`
+The evidence says prefill is 64% of inference and the fix space is image
+tiling, resolution and the vision tower. Each of those changes what the model
+sees, so each one invalidates the frozen generation policy that every number
+in this document depends on, and the comparison would have to be rebuilt from
+the baseline up.
+
+That is affordable. What makes it the wrong call is what it would add: one
+more latency number. The project's claim is that a system can stay responsive
+and honest when a learned component cannot keep pace with its sensor, and that
+claim is already carried by the admission policy, the failure taxonomy, the
+loss accounting and a bottleneck investigation whose prediction held. A 20%
+faster prefill would not strengthen any of it.
+
+So this is the Day 10 rule applied rather than quoted: the investigation is
+compelling and the remaining time is worth more spent on communication.
+Written down because "we ran out of time" and "we decided not to" look
+identical in a repository, and only one of them is a judgement.
 
 ### Step 6: re-measure, identical methodology
 
-Same power mode, same generation policy, same warmup, same duration, same
-seed. Only the one change differs.
-
-| metric | before | after | delta |
-|---|---|---|---|
-| inference latency p50 | `TBD` | `TBD` | `TBD` |
-| result age p50 | `TBD` | `TBD` | `TBD` |
-| result age p99 | `TBD` | `TBD` | `TBD` |
-| drop rate | `TBD` | `TBD` | `TBD` |
-| peak RSS | `TBD` | `TBD` | `TBD` |
+Nothing to re-measure, since step 5 made no change. The methodology is on
+record for whoever does: same power mode, same generation policy, same warmup,
+same duration, same seed, only the one change differing.
 
 ### Step 7: sustained load
 
-Ten minutes continuous in the fixed power profile, logging clocks, memory and
-power. What a short run misses: thermal throttling, memory growth, allocator
-fragmentation and health-state flapping.
+Twelve and a half minutes continuous at `nvpmodel` mode 0, logging clocks,
+memory and power. Artifacts in `results/sustained/`. Full write-up in the
+Gate 2 section above.
 
 | quantity | value |
 |---|---|
-| duration | `TBD` |
-| result age p50, first minute vs last minute | `TBD` |
-| clock throttling observed | `TBD` |
-| RSS at start vs end | `TBD` |
-| mean / peak power | `TBD` |
-| health state transitions | `TBD` |
+| duration | 599.5 s of steady state, 94 published records |
+| result age p50, first minute vs last | 6.4438 s -> 6.4659 s, **0.34%** |
+| clock throttling observed | none; p10 611 MHz against a 612 MHz ceiling |
+| memory at start vs end | 7069 MB used -> 7068 MB; swap 533 -> 533 MB |
+| mean / peak power | 15.51 W / 15.59 W from the rails; 15.7 / 17.2 W by tegrastats |
+| health state transitions | none; `healthy` throughout |
+| tj | 62.9 C -> 63.0 C across the longest stretch: plateaued |
+
+The two power figures differ because they measure different things:
+`telemetry_node` reads the INA3221 `VDD_IN` rail per published record, and
+tegrastats averages over its own interval including the idle gaps. Both are
+recorded rather than reconciled, because picking one would hide that the
+question exists.
 
 ## Day 10 rule
 
