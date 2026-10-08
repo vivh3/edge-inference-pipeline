@@ -65,7 +65,7 @@ is a budget and not an SLO.
 | result age p50 | <= 6.5 s | 6.088 s inference + one 33 ms frame interval + preprocessing and publish, with margin | **met**, 6.163 s |
 | result age p90 | <= 6.6 s | 6.117 s baseline p90 plus the same pipeline overhead | **met**, 6.32 s worst of 29 |
 | invalid-output rate | <= 35% | measured 30%, with room for scenes the probe set does not cover | **met**, 30% |
-| sustained 10 min | no `stalled` or `engine_dead`, and result age p50 within 10% first minute vs last | thermal and memory behaviour are unmeasured over that span | `TBD` |
+| sustained 10 min | no `stalled` or `engine_dead`, and result age p50 within 10% first minute vs last | thermal and memory behaviour are unmeasured over that span | **met**, 0.34% drift, `healthy` throughout |
 
 This table used to read 5.5 s, from a 4.930 s baseline that Gate 2 missed by
 12%. The baseline was measuring an input the pipeline never produces (below),
@@ -190,6 +190,66 @@ and none of them could have reached the answer -- the discrepancy was
 manufactured by the instrument. The tool producing the reference number needed
 the same scrutiny as the system, and got none for two days.
 
+### Sustained load: 12.5 minutes, every budget row met
+
+94 published records over 599.5 s of steady state, camera at 30 fps,
+`results/sustained/`.
+
+| quantity | p50 | p90 | max | budget |
+| --- | --- | --- | --- | --- |
+| queue age | 0.019 s | 0.035 s | 0.301 s | |
+| of which preprocess | 0.003 s | 0.004 s | 0.114 s | |
+| inference | 6.438 s | 6.455 s | 6.649 s | |
+| post-processing | 0.0006 s | 0.0007 s | 0.003 s | |
+| **result age** | **6.464 s** | 6.485 s | 6.804 s | <= 6.5 / 6.6 s |
+| consumer age | 6.474 s | 6.493 s | 6.831 s | |
+| invalid output | 0.0% | | | <= 35% |
+| available memory | 425.6 MB | | 418.3 MB min | |
+
+Result age p50 moved 6.4438 s to 6.4659 s between the first minute and the
+last: **0.34% against a 10% budget**. Health stayed `healthy` for the whole
+run, no `degraded`, no `stalled`. Memory held between 418 and 433 MB.
+
+**The pipeline costs 12 ms per cycle.** Successive results are 6.447 s apart
+against 6.438 s of inference, so the worker is idle 12 ms between frames -- a
+99.8% duty cycle. Everything outside the model is queueing, preprocessing,
+validation and publishing, and it rounds to nothing.
+
+**Result age is what a consumer experiences, now measured rather than
+asserted.** `consumer_age` -- capture to a separate subscriber process -- is
+10 ms above `result_age`, which ends at publish inside the inference node.
+0.15%. Worth checking, because the forward hop needed `array.array` to get
+from 173 ms to 0.9 ms, so a free hop was not a safe assumption.
+
+### What the scene costs, and what that means for the budget
+
+The first attempt at this run produced 94 records of which **every one failed
+validation**, and the cause was that the camera was face down. The model was
+being asked whether a path was clear while looking at a desk. Two independent
+readings agreed: `telemetry_node` reported 100% invalid, and `inference_node`
+went `degraded` at exactly the record where its 20-sample window filled.
+
+Re-pointed at a scene, the invalid rate is 0% -- and latency rose:
+
+| | face down | real scene |
+| --- | --- | --- |
+| result age p50 | 6.182 s | 6.464 s |
+| result age p90 | 6.202 s | 6.485 s |
+| invalid output | 100% | 0% |
+
+Generation latency is dominated by output length, and a featureless surface is
+cheap to describe. **So scene content is a latency input, which the frozen
+generation policy does not control.** The policy fixes the prompt, resolution,
+token cap, decoding and seed; it cannot fix what the camera sees.
+
+That leaves 36 ms of margin on the p50 budget, and the budget's own derivation
+is now suspect in the same way: the 6.088 s baseline was measured on
+`probe_00.jpg`, one still frame. A budget derived from one scene and tested
+against another is the same error as a baseline measured on 640x480 and
+compared against 448x448, in a less obvious costume. The number stands because
+it was met, and the next re-derivation should use a baseline over the probe
+set rather than a single frame.
+
 ### The startup outlier, explained
 
 An earlier version of this section reported preprocessing at 2.818 s from a
@@ -234,30 +294,81 @@ and what each would look like in a trace:
 
 ### Evidence already in hand, from the Gate 1 baseline
 
-`jtop` during 20 measured inferences of SmolVLM2-2.2B at float16, 15W. Taken
-during the pre-correction run, so the memory rows describe its 640x480 input.
-Utilisation, clocks, power and temperature are not latency figures, so the
-conclusions below stand.
+`tegrastats` at 1 Hz across the 12.5-minute sustained run, 15W:
+`results/sustained/tegrastats-sustained.log`, summarised by
+`tools/summarize_tegrastats.py`. That file holds four runs, because
+`tegrastats --logfile` appends and the filename was reused; the tool splits on
+the time gaps and this is run 4. The busy window is the 534 samples above 50%
+GPU, one trimmed from each end of each stretch because tegrastats reports the
+mean over its interval and a straddling sample averages a working GPU with an
+idle one.
 
-| quantity | during inference | idle |
-| --- | --- | --- |
-| GPU utilisation | **99.7 - 99.8%** | 0% |
-| GPU clock | 612 MHz, the 15W ceiling | 306 MHz |
-| EMC | 2.1 GHz, against a 2133 MHz cap | 204 MHz |
-| CPU, busiest core | 38% (the python process) | 14% |
-| process memory | 1.2 GB CPU **+ 5.1 GB GPU** | - |
-| system memory | 6.9 GB of 7.4 GB, 369 MB swapped | 3.5 GB, no swap |
-| VDD_IN | 15.9 - 16.9 W | 5.9 W |
-| tj | 57 - 59 C, fan 38 - 43% | 50 C |
+| quantity | busy p50 | busy range | idle p50 |
+| --- | --- | --- | --- |
+| GPU utilisation | **99%** | 56 - 100% | 0% |
+| GPU clock | 611 MHz | p10 611, the 15W ceiling | 305 MHz |
+| EMC clock | 2133 MHz, its cap | pinned | 204 MHz |
+| EMC utilisation | 55% | 29 - 68% | 23% |
+| CPU, busiest core | 38% | 15 - 86% | 33% |
+| CPU, summed over 6 cores | 77% | 25 - 144% | 93% |
+| system RAM used | 7069 MB of 7620 | 6708 - 7076 | 3851 MB |
+| swap used | 533 MB | 437 - 536 | 174 MB |
+| tj | 62.8 C | 51.2 - 63.8 | 49.9 C |
+| VDD_IN | 15.7 W | 11.7 - 17.2 | 6.0 W |
 
-This rules out three of the six candidates before any profiler runs. A GPU at
-99.8% is not idling behind CPU preprocessing, not waiting on a synchronous
-host-to-device copy, and not stalling on synchronisation. Those all show as
-GPU idle gaps, and there are none. CPU is 38% on one core and near zero on the
-other five.
+This replaces three jtop screenshots read off at three arbitrary moments. A
+screenshot cannot answer the question the table exists to answer -- whether the
+clock *held* -- and nobody else can regenerate one.
 
-It also rules out thermal throttling. 59 C on a part that throttles far higher,
-with the fan at 43%, is not a thermally limited board.
+The idle column describes weight loading, not an idle board: 115 of the run's
+152 sub-50% samples are one contiguous stretch at the start, CPU-bound at 94%
+summed with the GPU parked at 305 MHz and the module drawing 6 W. That is why
+"idle" CPU reads higher than busy CPU.
+
+Within the longest busy stretch, first ten samples against last ten:
+
+| quantity | first | last | delta |
+| --- | --- | --- | --- |
+| tj | 62.9 C | 63.0 C | +0.1 |
+| GPU clock | 611 MHz | 611 MHz | 0 |
+| system RAM used | 7069 MB | 7068 MB | -1 |
+| swap used | 533 MB | 533 MB | 0 |
+| VDD_IN | 15.9 W | 15.8 W | -0.1 |
+
+**Thermal throttling is ruled out, now over twelve minutes.** The clock's 10th
+percentile is 611 MHz against a 612 MHz high; one sample in 534 dipped to 509
+and the rest held. tj reaches 62.8 C and plateaus -- the drift table moves it
+0.1 C -- against a part that throttles far higher. An earlier two-minute run
+showed tj still climbing at the end and this document said so, scoping the
+claim to that length. Twelve minutes settles it.
+
+Memory is ruled out on the same evidence: RAM and swap do not move across the
+measured window. The growth to 533 MB of swap happens during weight loading,
+before the first timed result.
+
+Host-to-device transfer and synchronisation stalls are ruled out: both show as
+GPU idle gaps aligned with CPU-side waits, and the GPU reads 90-100% in 550 of
+752 samples.
+
+**CPU preprocessing is only partly ruled out, and this is the open lead.**
+Our `Preprocessor` is measured at 3 ms, so it is not the cost. But
+`inference_latency` is one number spanning the engine's `processor` call
+(tokenisation and image tensor preparation, on the CPU) and `generate` (on the
+GPU), and nothing separates them. The log says there is something there:
+
+- A window below 90% GPU recurs every 6.4 s -- once per inference cycle, mode
+  6 s over 87 occurrences.
+- The deeper sub-50% dips recur every 19 s, which is the beat between a 6.45 s
+  cycle and 1 Hz sampling rather than a three-cycle period.
+- For a one-second window to average 51%, the non-GPU phase inside it must be
+  at least 0.44 s. Against a 6.44 s cycle that is **roughly 7% of inference
+  spent off the GPU**.
+
+7% inferred from 1 Hz aliasing is a direction, not a measurement. Stamping
+either side of the processor call would measure it outright, costs two lines,
+and splits the headline number into CPU and GPU parts -- which is the same
+question time to first token was wanted for, answerable without fighting the
+runtime. That is step 2, ahead of NVTX.
 
 What is left is on-GPU work: prefill, decode, or both. The arithmetic says to
 check prefill first. 6088 ms for 19 output tokens is 320 ms per token if decode
