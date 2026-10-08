@@ -1,29 +1,37 @@
 #!/usr/bin/env python3
-"""Separate prefill from decode using two baselines at different output lengths.
+"""Separate prefill from decode using baselines at different output lengths.
 
 Generative latency is prefill (vision encoding and prompt processing, once)
 plus decode (autoregressive, per token). Telling them apart normally needs
 time to first token, which `transformers.generate` does not expose without
 instrumenting the generation loop.
 
-Two runs do it instead, as long as everything except output length is held
-constant. Decode cost is per token and prefill is not, so:
+Baselines do it instead, as long as everything except output length is held
+constant. GPU time is then linear in output length:
 
-    per_token = (generate_b - generate_a) / (tokens_b - tokens_a)
-    decode    = per_token * tokens
-    prefill   = generate - decode
+    generate = prefill + per_token x tokens
 
-    python3 tools/decompose_inference.py run_a.json run_b.json
+so a least-squares line through the runs gives the per-token cost as its slope
+and prefill as its intercept -- the GPU time at zero tokens.
+
+    python3 tools/decompose_inference.py run_a.json run_b.json [run_c.json ...]
+
+**Give it more than two runs where you can.** Two points always fit a line
+exactly, so a two-point estimate cannot be wrong and cannot be checked. The
+first three runs taken here had pairwise slopes of 73, 89 and 97 ms per token
+while the three-point fit was 90 ms with residuals under 10 ms on a 6 s
+quantity. Either pair alone would have looked authoritative and two of the
+three would have been off by 15%.
 
 `processor_s` is the CPU phase and is subtracted first. Runs taken before that
 field existed are handled by passing `--processor-s`, since the phase depends
 on resolution and prompt -- both frozen -- and not on output length.
 
-This is a two-point estimate. It assumes prefill is identical across the two
-runs, which the frozen 448x448 resolution makes defensible because SmolVLM
-tiles by resolution, and that per-token decode cost does not change over the
-token range compared. A profiler would measure the split outright; this says
-where to point one.
+Assumes prefill is identical across runs, which the frozen 448x448 makes
+defensible because SmolVLM tiles by resolution, and that per-token cost is
+flat over the range compared -- which the residuals now test rather than
+assert. A profiler would measure the split outright; this says where to point
+one.
 """
 
 from __future__ import annotations
@@ -88,10 +96,20 @@ def generate_s(report: dict, fallback_processor: float, name: str) -> float:
     return inference - fallback_processor
 
 
+def fit(points):
+    """Least squares through (tokens, generate_s). Returns slope, intercept."""
+    n = len(points)
+    mean_x = sum(x for x, _ in points) / n
+    mean_y = sum(y for _, y in points) / n
+    sxx = sum((x - mean_x) ** 2 for x, _ in points)
+    sxy = sum((x - mean_x) * (y - mean_y) for x, y in points)
+    slope = sxy / sxx
+    return slope, mean_y - slope * mean_x
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("baseline_a")
-    p.add_argument("baseline_b")
+    p.add_argument("baselines", nargs="+", help="two or more baseline JSON files")
     p.add_argument(
         "--processor-s",
         type=float,
@@ -101,70 +119,90 @@ def main() -> int:
     p.add_argument("--out", help="write the decomposition as JSON")
     args = p.parse_args()
 
-    names = (os.path.basename(args.baseline_a), os.path.basename(args.baseline_b))
-    a = json.load(open(args.baseline_a))
-    b = json.load(open(args.baseline_b))
-    check_comparable(a, b, names)
+    if len(args.baselines) < 2:
+        raise SystemExit("at least two baselines are needed to separate the two costs")
 
-    # Either run may carry the measured phase; a run predating the split uses
-    # the other run's value, which is sound because the phase depends on
-    # resolution and prompt, both frozen, and not on output length.
-    processor = (
-        dig(b, ("processor_s", "p50"))
-        or dig(a, ("processor_s", "p50"))
-        or args.processor_s
-    )
+    names = [os.path.basename(path) for path in args.baselines]
+    reports = [json.load(open(path)) for path in args.baselines]
+    # Every run is checked against the first, so one mismatched file cannot
+    # slip through by matching its neighbour.
+    for report, name in zip(reports[1:], names[1:]):
+        check_comparable(reports[0], report, (names[0], name))
 
-    tokens_a = dig(a, ("output_tokens", "p50"))
-    tokens_b = dig(b, ("output_tokens", "p50"))
-    if tokens_a is None or tokens_b is None:
-        raise SystemExit("both runs need output_tokens")
-    if tokens_a == tokens_b:
+    processor = args.processor_s
+    for report in reports:
+        measured = dig(report, ("processor_s", "p50"))
+        if measured is not None:
+            processor = measured
+            break
+
+    points = []
+    for report, name in zip(reports, names):
+        tokens = dig(report, ("output_tokens", "p50"))
+        if tokens is None:
+            raise SystemExit(f"{name} has no output_tokens")
+        points.append((tokens, generate_s(report, processor, name)))
+
+    if len({x for x, _ in points}) < 2:
         raise SystemExit(
-            f"both runs produced {tokens_a:.0f} tokens, so they cannot separate "
-            "a per-token cost from a fixed one. Vary the scene."
+            f"every run produced {points[0][0]:.0f} tokens, so they cannot "
+            "separate a per-token cost from a fixed one. Vary the scene."
         )
 
-    gen_a = generate_s(a, processor, names[0])
-    gen_b = generate_s(b, processor, names[1])
-    per_token = (gen_b - gen_a) / (tokens_b - tokens_a)
+    per_token, prefill = fit(points)
     if per_token <= 0:
         raise SystemExit(
-            f"the run with more tokens was faster ({gen_b:.3f} s for "
-            f"{tokens_b:.0f} vs {gen_a:.3f} s for {tokens_a:.0f}), so something "
-            "other than output length differs between them."
+            "GPU time falls as output length rises across these runs, so "
+            "something other than output length differs between them."
         )
 
-    inference = dig(b, ("inference_latency_s", "p50"))
-    decode = per_token * tokens_b
-    prefill = gen_b - decode
-    parts = [
-        ("processor (CPU)", processor),
-        ("prefill (GPU)", prefill),
-        ("decode (GPU)", decode),
-    ]
+    residuals = [(x, y, y - (prefill + per_token * x)) for x, y in points]
+    worst = max(abs(r) for _, _, r in residuals)
 
-    print(f"{names[0]}: {gen_a:.3f} s of GPU for {tokens_a:.0f} tokens")
-    print(f"{names[1]}: {gen_b:.3f} s of GPU for {tokens_b:.0f} tokens")
-    print(f"\nmarginal cost per output token  {per_token * 1000:.1f} ms\n")
-    print(f"decomposition of {names[1]}'s {inference:.3f} s:")
-    for label, value in parts:
+    # The decomposition is reported for the last run named, which is normally
+    # the newest.
+    tokens = points[-1][0]
+    inference = dig(reports[-1], ("inference_latency_s", "p50"))
+    decode = per_token * tokens
+    measured_prefill = points[-1][1] - decode
+
+    for (tokens_i, gen), name in zip(points, names):
+        print(f"{name}: {gen:.3f} s of GPU for {tokens_i:.0f} tokens")
+    print(f"\nfit over {len(points)} run(s): {per_token * 1000:.1f} ms per output token")
+    print(f"prefill (the intercept, GPU time at zero tokens): {prefill:.3f} s")
+    if len(points) < 3:
+        print(
+            "\nTwo points fit a line exactly, so this cannot be checked. A third\n"
+            "run at a different output length would test it."
+        )
+    else:
+        print(f"\nresiduals, worst {worst * 1000:.0f} ms:")
+        for tokens_i, gen, residual in residuals:
+            print(
+                f"  {tokens_i:3.0f} tokens  predicted {gen - residual:.3f}  "
+                f"actual {gen:.3f}  {residual * 1000:+.0f} ms"
+            )
+
+    print(f"\ndecomposition of {names[-1]}'s {inference:.3f} s:")
+    for label, value in (
+        ("processor (CPU)", processor),
+        ("prefill (GPU)", measured_prefill),
+        ("decode (GPU)", decode),
+    ):
         print(f"  {label:<18} {value:6.3f} s  {100 * value / inference:5.1f}%")
-    print(
-        "\nTwo-point estimate. It assumes prefill is the same in both runs and\n"
-        "that per-token decode cost is flat across the range compared."
-    )
 
     result = {
-        "runs": list(names),
-        "tokens": [tokens_a, tokens_b],
-        "generate_s": [round(gen_a, 6), round(gen_b, 6)],
+        "runs": names,
+        "points": [[x, round(y, 6)] for x, y in points],
         "per_token_s": round(per_token, 6),
+        "prefill_s_fitted": round(prefill, 6),
+        "worst_residual_s": round(worst, 6),
+        "reported_for": names[-1],
         "inference_s": inference,
         "processor_s": round(processor, 6) if processor is not None else None,
-        "prefill_s": round(prefill, 6),
+        "prefill_s": round(measured_prefill, 6),
         "decode_s": round(decode, 6),
-        "method": "two baselines at different output lengths; see module docstring",
+        "method": "least squares over (tokens, GPU time); see module docstring",
     }
     if args.out:
         os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
