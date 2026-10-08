@@ -320,12 +320,22 @@ Four of six candidates are eliminated from a 1 Hz resource log over the sustaine
 That rules out host-to-device transfer, synchronisation stalls, thermal throttling and
 memory pressure.
 
-What is left is on-GPU work plus one thing the instrumentation cannot currently
-separate: `inference_latency` spans both the engine's CPU-side `processor` call and
-`generate` on the GPU. A sub-90% GPU window recurs once per 6.4 s inference cycle,
-and its depth implies roughly 7% of inference runs off the GPU — inferred from 1 Hz
-aliasing, so a direction rather than a measurement. Splitting that stamp is the next
-step.
+The remaining candidate was on-GPU work, and the hypothesis written down before
+profiling was that prefill dominates rather than decode. It does. Decode costs per
+token and prefill does not, so two baselines at different output lengths separate them
+without a profiler (`tools/decompose_inference.py`, which refuses any pair whose
+generation policy differs):
+
+| stage | | share of 6.355 s |
+|---|---|---|
+| processor, CPU | 0.264 s | 4.2% |
+| **prefill, GPU** | **4.130 s** | **65.0%** |
+| decode, GPU | 1.961 s | 30.9% |
+
+89 ms per output token, against the "well under 100 ms" the bandwidth arithmetic
+predicted beforehand. The fix space is image tiling, resolution and the vision tower.
+A two-point estimate, labelled as one — a profiler would measure the split directly,
+and this says where to point it.
 
 The hypothesis is written down before profiling. Being wrong is a good README
 section. If the evidence supports none of the obvious tools, the result is

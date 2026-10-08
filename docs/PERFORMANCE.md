@@ -67,6 +67,21 @@ is a budget and not an SLO.
 | invalid-output rate | <= 35% | measured 30%, with room for scenes the probe set does not cover | **met**, 30% |
 | sustained 10 min | no `stalled` or `engine_dead`, and result age p50 within 10% first minute vs last | thermal and memory behaviour are unmeasured over that span | **met**, 0.34% drift, `healthy` throughout |
 
+**The invalid-output row is not yet honestly measured.** Four readings exist
+and none generalises: 30% (original probe set), 0% (sustained run, one live
+scene), 100% (camera face down), 0% (10 probe frames from a stationary camera,
+all returning an identical answer). The last is n~=1 wearing n=10, the same
+error `--probe-dir` was added to fix. A probe set captured with the camera
+moved between frames is the measurement; until then the row reads "met" on
+weak evidence.
+
+**The budget is stricter than the method would now produce, and was met
+anyway.** It derives from the 6088 ms baseline, taken on a sparse frame. The
+representative-scene baseline is 6355 ms, which by the same derivation gives
+about 6.8 s. The target stays at 6.5 s: re-deriving it would turn a 36 ms
+margin into a comfortable one, which is accurate but indistinguishable from
+moving a goalpost after the result. The system met the tighter number.
+
 This table used to read 5.5 s, from a 4.930 s baseline that Gate 2 missed by
 12%. The baseline was measuring an input the pipeline never produces (below),
 and the budget inherited the error. Restated from the corrected measurement --
@@ -95,6 +110,17 @@ SmolVLM2-2.2B-Instruct at `482adb5`, float16, 15W, one probe frame repeated
 
 No p99: nearest-rank p99 of 20 samples is rank 20, which is the maximum, so
 quoting one would name the slowest single run as a tail statistic.
+
+**Scene content moves this number.** 6088 ms is a sparse frame; the same
+model on a representative scene is 6355 ms with 22 output tokens instead of
+19 (`results/baseline/model-2.2b-split.json`). Generation latency follows
+output length, and the frozen policy fixes prompt, resolution, token cap,
+decoding and seed -- not what the camera sees.
+
+| baseline | p50 | tokens |
+| --- | --- | --- |
+| sparse frame | 6088 ms | 19 |
+| representative scene | 6355 ms | 22 |
 
 **This replaces an earlier 4930 ms.** The first version of
 `tools/gate1_baseline.py` opened the probe frame with PIL and handed the model
@@ -385,6 +411,49 @@ bandwidth explains and the fix space is the generation path.
 
 Written before profiling. Being wrong here is a good outcome.
 
+### Step 4: what the evidence showed -- the hypothesis held
+
+No profiler needed. Decode costs per token and prefill does not, so two
+baselines at different output lengths separate them:
+
+    per_token = (generate_b - generate_a) / (tokens_b - tokens_a)
+    prefill   = generate - per_token x tokens
+
+`tools/decompose_inference.py` does this and refuses any pair whose generation
+policy differs -- the guard this project learned to need. Both runs: same model
+at `482adb5`, 448x448, greedy, seed 0. Only the scene differs.
+
+| run | GPU time | tokens |
+| --- | --- | --- |
+| `model-2.2b.json` | 5.824 s | 19 |
+| `model-2.2b-split.json` | 6.091 s | 22 |
+
+**89 ms per output token** -- against the "well under 100 ms" that the
+bandwidth arithmetic above predicted before any of it was measured.
+
+| stage | | share of 6.355 s |
+| --- | --- | --- |
+| processor, CPU | 0.264 s | 4.2% |
+| **prefill, GPU** | **4.130 s** | **65.0%** |
+| decode, GPU | 1.961 s | 30.9% |
+
+Prefill dominates, as written down. So the fix space is image tiling,
+resolution and the vision tower -- not the generation path, and not the CPU
+phase, which is worth 264 ms at most.
+
+Two points, labelled as two. It assumes prefill is the same in both runs,
+which the frozen 448x448 makes defensible since SmolVLM tiles by resolution,
+and that per-token cost is flat from 19 to 22 tokens. A profiler would measure
+the split directly; this says where to point one, for two stamps and a second
+baseline.
+
+**The 7% that was wrong.** The utilisation log was read as implying ~7% of
+inference off the GPU, since a one-second window averaging 51% needs ~490 ms
+of non-GPU time. Measured: 4.2%. The reasoning assumed the GPU was saturated
+the rest of the time, and it is not -- decode's many small kernels leave real
+gaps, so `GR3D_FREQ` sits below 100% with no CPU phase at all. An unstated
+premise is an unchecked one.
+
 ### Not the bottleneck, but worth recording
 
 The GPU sits at exactly the 15W mode's 612 MHz ceiling and EMC at its cap, so
@@ -409,10 +478,6 @@ nsys profile --trace=cuda,nvtx,osrt --output=results/traces/baseline \
 
 - Trace: `results/traces/TBD`
 - Screenshot: `TBD`
-
-### Step 4: what the evidence showed
-
-`TBD`
 
 ### Step 5: the one change
 
