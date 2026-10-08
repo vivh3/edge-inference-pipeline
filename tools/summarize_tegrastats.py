@@ -30,7 +30,8 @@ import json
 import os
 import re
 import sys
-from typing import Dict, List, Optional
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -54,11 +55,19 @@ PATTERNS = {
 CORE = re.compile(r"(\d+)%@(\d+)")
 
 
+STAMP = re.compile(r"^(\d\d-\d\d-\d{4} \d\d:\d\d:\d\d)")
+
+
 def parse_line(line: str) -> Optional[Dict[str, float]]:
     gpu = PATTERNS["gpu_pct"].search(line)
     if not gpu:
         return None
     sample = {"gpu_pct": float(gpu.group(1)), "gpu_mhz": float(gpu.group(2))}
+    stamp = STAMP.match(line)
+    if stamp:
+        sample["ts"] = datetime.strptime(
+            stamp.group(1), "%m-%d-%Y %H:%M:%S"
+        ).timestamp()
 
     emc = PATTERNS["emc_pct"].search(line)
     if emc:
@@ -81,6 +90,28 @@ def parse_line(line: str) -> Optional[Dict[str, float]]:
             sample["cpu_busiest_pct"] = max(loads)
             sample["cpu_total_pct"] = sum(loads)
     return sample
+
+
+def segments(
+    samples: List[Dict[str, float]], max_gap_s: float
+) -> List[Tuple[int, int]]:
+    """Split on time discontinuities. `[(start, stop), ...]`, stop exclusive.
+
+    `tegrastats --logfile` appends, so reusing a filename across runs leaves
+    one file holding several. Averaging across the join produced a log of
+    1576 samples spanning 2194 seconds, 65 busy stretches instead of 33, and
+    an "idle" CPU figure higher than the busy one -- because the idle samples
+    were two runs' weight-loading phases, which are CPU-bound with the GPU
+    parked.
+    """
+    if not samples or "ts" not in samples[0]:
+        return [(0, len(samples))]
+    bounds = [0]
+    for i in range(1, len(samples)):
+        if samples[i]["ts"] - samples[i - 1]["ts"] > max_gap_s:
+            bounds.append(i)
+    bounds.append(len(samples))
+    return list(zip(bounds, bounds[1:]))
 
 
 def busy_runs(
@@ -151,30 +182,43 @@ def drift(
 
 # A clock this close to the ceiling is the sampling interval, not the governor.
 _AT_CEILING = 0.98
+# The floor is read at this percentile rather than at the minimum. One sample
+# in 534 sat at 509 MHz while the other 533 held 611, and a min-versus-max
+# verdict called that throttling. Throttling is a sustained condition, so the
+# estimator has to be one too.
+_FLOOR_PERCENTILE = 10
 
 
-def clock_verdict(gpu_mhz: Dict[str, float]) -> str:
-    ceiling = gpu_mhz["max"]
-    low = gpu_mhz["min"]
-    share = low / ceiling if ceiling else 0.0
-    n = gpu_mhz["n"]
-    if low == ceiling:
+def clock_verdict(values: List[float]) -> str:
+    ceiling = max(values)
+    floor = percentile(values, _FLOOR_PERCENTILE)
+    low = min(values)
+    below = sum(1 for v in values if v < _AT_CEILING * ceiling)
+    n = len(values)
+    share = floor / ceiling if ceiling else 0.0
+    dips = (
+        f"{below} of {n} samples dipped below {_AT_CEILING * ceiling:.0f} MHz,\n"
+        f"the lowest {low:.0f}."
+    )
+    if below == 0:
         return (
-            f"GPU clock pinned at {ceiling:.0f} MHz for all {n} samples.\n"
+            f"GPU clock held {ceiling:.0f} MHz across all {n} busy samples.\n"
             "No sag, so this run was neither thermally nor power throttled."
         )
     if share >= _AT_CEILING:
         return (
-            f"GPU clock held the ceiling: {low:.0f} - {ceiling:.0f} MHz over {n} "
-            f"samples, the low being {share * 100:.1f}% of the high.\n"
-            "A spread this small is tegrastats averaging over its interval, not\n"
-            "the governor stepping down, so this run was not throttled."
+            f"GPU clock held the ceiling: p{_FLOOR_PERCENTILE} is {floor:.0f} MHz "
+            f"against a {ceiling:.0f} MHz high, {share * 100:.1f}% of it.\n"
+            f"{dips} Isolated dips are not throttling, which is a\n"
+            "sustained condition; a run at the ceiling for 90% of its samples\n"
+            "was not clock-limited below its power mode."
         )
     return (
-        f"GPU clock sagged: {low:.0f} - {ceiling:.0f} MHz over {n} samples, the low\n"
-        f"being {share * 100:.1f}% of the high. That is below the power mode's\n"
-        "ceiling for long enough to matter. Check tj and VDD_IN against the mode's\n"
-        "budget before reading anything else in this table."
+        f"GPU clock sagged: p{_FLOOR_PERCENTILE} is {floor:.0f} MHz against a "
+        f"{ceiling:.0f} MHz high, {share * 100:.1f}% of it.\n"
+        f"{dips} That is below the power mode's ceiling often enough\n"
+        "to matter. Check tj and VDD_IN against the mode's budget before\n"
+        "reading anything else in this table."
     )
 
 
@@ -225,6 +269,18 @@ def main() -> int:
         "0 keeps them, which puts interval-averaged values in the minimum column",
     )
     p.add_argument(
+        "--max-gap-s",
+        type=float,
+        default=5.0,
+        help="a time step larger than this starts a new run (default 5)",
+    )
+    p.add_argument(
+        "--segment",
+        type=int,
+        help="which run to summarise when the log holds several, 1-based; "
+        "the last one by default, since that is usually the one just finished",
+    )
+    p.add_argument(
         "--drift-window",
         type=int,
         default=10,
@@ -235,9 +291,29 @@ def main() -> int:
     args = p.parse_args()
 
     with open(args.logfile) as fh:
-        samples = [s for s in (parse_line(line) for line in fh) if s]
-    if not samples:
+        everything = [s for s in (parse_line(line) for line in fh) if s]
+    if not everything:
         raise SystemExit(f"no tegrastats samples parsed from {args.logfile}")
+
+    found = segments(everything, args.max_gap_s)
+    if len(found) > 1:
+        print(
+            f"{args.logfile} holds {len(found)} runs "
+            f"(gaps over {args.max_gap_s:.0f} s). tegrastats --logfile appends, "
+            "so a reused filename accumulates them:"
+        )
+        for n, (start, stop) in enumerate(found, 1):
+            first = datetime.fromtimestamp(everything[start]["ts"]).strftime("%H:%M:%S")
+            last = datetime.fromtimestamp(everything[stop - 1]["ts"]).strftime("%H:%M:%S")
+            print(f"  [{n}] {stop - start:5d} samples  {first} - {last}")
+        print()
+    chosen = (args.segment or len(found)) - 1
+    if not 0 <= chosen < len(found):
+        raise SystemExit(f"--segment must be 1..{len(found)}")
+    start, stop = found[chosen]
+    samples = everything[start:stop]
+    if len(found) > 1:
+        print(f"summarising run [{chosen + 1}] of {len(found)}; --segment picks another\n")
 
     runs = busy_runs(samples, args.busy_above)
     trimmed = trim_edges(runs, args.trim_edges)
@@ -253,6 +329,8 @@ def main() -> int:
 
     summary = {
         "logfile": os.path.basename(args.logfile),
+        "runs_in_logfile": len(found),
+        "run_summarised": chosen + 1,
         "samples": len(samples),
         "busy_above_gpu_pct": args.busy_above,
         "busy_stretches": len(runs),
@@ -320,7 +398,7 @@ def main() -> int:
         )
 
     print()
-    print(clock_verdict(summary["busy"]["gpu_mhz"]))
+    print(clock_verdict([s["gpu_mhz"] for s in busy]))
 
     if args.out:
         os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)

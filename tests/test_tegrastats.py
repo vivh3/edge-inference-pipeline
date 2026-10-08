@@ -7,6 +7,7 @@ a hand-written approximation would test the approximation.
 
 import importlib.util
 import os
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -63,7 +64,22 @@ def test_a_line_without_a_gpu_field_is_not_a_sample():
     assert tegrastats.parse_line("some other log line") is None
 
 
-def summarize(tmp_path, lines, argv_extra=()):
+def stamped(line, when):
+    """Replace a sample's timestamp. The fixtures carry different ones."""
+    return when + line[len("10-08-2026 04:38:21"):]
+
+
+def summarize(tmp_path, lines, argv_extra=(), restamp=True):
+    if restamp:
+        # One second apart, so the log reads as a single contiguous run. The
+        # IDLE and BUSY fixtures were copied from different moments of a real
+        # log and their stamps are minutes apart, which the segmenter would
+        # read as several runs.
+        base = datetime(2026, 10, 8, 4, 30)
+        lines = [
+            stamped(line, (base + timedelta(seconds=i)).strftime("%m-%d-%Y %H:%M:%S"))
+            for i, line in enumerate(lines)
+        ]
     log = tmp_path / "tegrastats.log"
     log.write_text("\n".join(lines) + "\n")
     out = tmp_path / "summary.json"
@@ -159,35 +175,6 @@ def test_all_stretches_too_short_is_an_error(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# The throttling verdict
-# --------------------------------------------------------------------------
-
-
-def verdict(low, high, n=100):
-    return tegrastats.clock_verdict({"min": low, "max": high, "n": n})
-
-
-def test_a_pinned_clock_reads_as_not_throttled():
-    message = verdict(612, 612)
-    assert "pinned at 612 MHz" in message
-    assert "neither thermally nor power throttled" in message
-
-
-def test_a_few_mhz_below_the_ceiling_is_not_throttling():
-    # The real log read 607-612 MHz and the first version of this tool called
-    # it throttling. 607 is 99.2% of 612: that is the sampling interval.
-    message = verdict(607, 612, n=148)
-    assert "held the ceiling" in message
-    assert "was not throttled" in message
-
-
-def test_a_real_sag_is_called_throttling():
-    message = verdict(420, 612, n=148)
-    assert "sagged" in message
-    assert "Check tj and VDD_IN" in message
-
-
-# --------------------------------------------------------------------------
 # Drift
 #
 # A distribution says what a run cost; it cannot say whether the run settled.
@@ -233,3 +220,79 @@ def test_drift_uses_the_longest_stretch_not_the_whole_busy_set(tmp_path):
 def test_drift_is_absent_rather_than_guessed_when_the_run_is_short(tmp_path):
     summary = summarize(tmp_path, [IDLE] + [BUSY] * 5 + [IDLE])
     assert summary["drift"]["fields"] is None
+
+
+# --------------------------------------------------------------------------
+# Several runs in one logfile
+#
+# `tegrastats --logfile` appends. Reusing a filename across runs left one file
+# holding four, and summarising all of them gave 65 busy stretches instead of
+# 33 and an "idle" CPU figure above the busy one -- the idle samples were two
+# runs' weight-loading phases, which are CPU-bound with the GPU parked.
+# --------------------------------------------------------------------------
+
+
+def test_a_contiguous_log_is_one_run():
+    samples = [
+        tegrastats.parse_line(stamped(BUSY, f"10-08-2026 04:38:{s:02d}"))
+        for s in range(20, 25)
+    ]
+    assert tegrastats.segments(samples, max_gap_s=5.0) == [(0, 5)]
+
+
+def test_a_time_gap_starts_a_new_run():
+    times = ["04:38:20", "04:38:21", "04:45:00", "04:45:01"]
+    samples = [
+        tegrastats.parse_line(stamped(BUSY, f"10-08-2026 {t}")) for t in times
+    ]
+    assert tegrastats.segments(samples, max_gap_s=5.0) == [(0, 2), (2, 4)]
+
+
+def test_a_log_without_timestamps_is_still_one_run():
+    # Not every release prints a stamp; losing the segmentation is acceptable,
+    # crashing is not.
+    samples = [{"gpu_pct": 99.0, "gpu_mhz": 612.0}] * 3
+    assert tegrastats.segments(samples, max_gap_s=5.0) == [(0, 3)]
+
+
+def test_the_last_run_is_summarised_by_default(tmp_path, capsys):
+    early = [stamped(IDLE, f"10-08-2026 04:30:{s:02d}") for s in range(0, 6)]
+    late = [stamped(BUSY, f"10-08-2026 05:00:{s:02d}") for s in range(0, 6)]
+    summary = summarize(tmp_path, early + late, restamp=False)
+    assert summary["runs_in_logfile"] == 2
+    assert summary["run_summarised"] == 2
+    assert summary["samples"] == 6
+    assert summary["busy"]["gpu_pct"]["p50"] == 99.0
+
+
+def test_an_earlier_run_can_be_chosen(tmp_path):
+    early = [stamped(BUSY, f"10-08-2026 04:30:{s:02d}") for s in range(0, 6)]
+    late = [stamped(IDLE, f"10-08-2026 05:00:{s:02d}") for s in range(0, 6)]
+    summary = summarize(tmp_path, early + late, ("--segment", "1"), restamp=False)
+    assert summary["run_summarised"] == 1
+    assert summary["busy"]["gpu_pct"]["p50"] == 99.0
+
+
+# --------------------------------------------------------------------------
+# The verdict reads a percentile, not an extremum
+# --------------------------------------------------------------------------
+
+
+def test_one_dip_in_five_hundred_is_not_throttling():
+    # The real run: 533 samples at 611 MHz and one at 509. A min-versus-max
+    # verdict called it throttling.
+    message = tegrastats.clock_verdict([611.0] * 533 + [509.0])
+    assert "held the ceiling" in message
+    assert "not clock-limited" in message
+    assert "1 of 534 samples dipped" in message
+
+
+def test_a_sustained_sag_is_still_throttling():
+    message = tegrastats.clock_verdict([420.0] * 300 + [612.0] * 100)
+    assert "sagged" in message
+    assert "Check tj and VDD_IN" in message
+
+
+def test_a_clock_pinned_throughout_says_so():
+    message = tegrastats.clock_verdict([612.0] * 200)
+    assert "held 612 MHz across all 200" in message
