@@ -68,6 +68,11 @@ RESULTS_QOS = QoSProfile(
     durability=DurabilityPolicy.VOLATILE,
 )
 
+# `Failure.NONE.value`, spelled out rather than imported so the node keeps no
+# dependency on the enum. Counting any non-empty failure string as a failure
+# reported {"none": 96} for a run where nothing failed.
+NO_FAILURE = "none"
+
 FIELDS = [
     "frame_id",
     "wall_clock",
@@ -88,6 +93,9 @@ FIELDS = [
     "consumer_age",
     "ok",
     "failure",
+    # Why validation rejected it. Without this the CSV says 96 records failed
+    # and gives no way to tell which of the six ways, or on what.
+    "detail",
     "extracted",
     "path_status",
     "obstacle_location",
@@ -119,7 +127,10 @@ def row_from_record(record: dict, received_ts: float) -> dict:
         "result_age": round(publish - capture, 6),
         "consumer_age": round(received_ts - capture, 6),
         "ok": bool(validation.get("ok", False)),
-        "failure": str(validation.get("failure") or ""),
+        # The contract's own value, not a re-encoding: a passing record says
+        # "none", which is a failure *name*, not an absence of one.
+        "failure": str(validation.get("failure") or NO_FAILURE),
+        "detail": str(validation.get("detail") or ""),
         "extracted": bool(validation.get("extracted", False)),
         "path_status": str(semantic.get("path_status", "")),
         "obstacle_location": str(semantic.get("obstacle_location", "")),
@@ -164,8 +175,9 @@ P99_MIN_SAMPLES = 100
 def summarize(rows: list, duration_s: float, unparseable: int = 0) -> dict:
     failures: dict = {}
     for row in rows:
-        if row["failure"]:
-            failures[row["failure"]] = failures.get(row["failure"], 0) + 1
+        failure = row["failure"]
+        if failure and failure != NO_FAILURE:
+            failures[failure] = failures.get(failure, 0) + 1
     summary = {
         "duration_s": round(duration_s, 3),
         "records": len(rows),
