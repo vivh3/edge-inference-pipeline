@@ -88,6 +88,22 @@ def test_durations_are_differences_of_the_published_stamps():
     assert row["result_age"] == pytest.approx(6.157)
 
 
+def test_the_validator_detail_is_recorded():
+    # A run of 96 rejected records with no detail column says only that
+    # something failed, which is where the first sustained run landed.
+    record = dict(
+        RECORD,
+        validation={
+            "ok": False,
+            "failure": "unusable_semantics",
+            "detail": "path_status=blocked with obstacle_location=none",
+            "extracted": False,
+        },
+    )
+    row = node.row_from_record(record, received_ts=106.2)
+    assert row["detail"] == "path_status=blocked with obstacle_location=none"
+
+
 def test_consumer_age_extends_past_publish_to_this_subscriber():
     # result_age ends at publish inside the inference process. A consumer waits
     # for the hop back too, and the README claims result_age is what a consumer
@@ -104,7 +120,31 @@ def test_missing_semantics_do_not_raise():
     row = node.row_from_record(record, received_ts=106.2)
     assert row["path_status"] == ""
     assert row["ok"] is False
-    assert row["failure"] == ""
+    assert row["failure"] == node.NO_FAILURE
+
+
+def test_a_passing_record_is_not_counted_as_a_failure_kind():
+    # ValidationReport spells a pass as failure="none", which is a failure
+    # *name*, not an absence of one. Counting non-empty strings reported
+    # {"none": 96} for a run in which nothing failed.
+    data = rows([6.1] * 3)
+    for row in data:
+        row["failure"] = node.NO_FAILURE
+    summary = node.summarize(data, duration_s=18.0)
+    assert summary["failures"] == {}
+
+
+def test_real_failures_are_still_counted_beside_passing_records():
+    data = rows([6.1] * 4)
+    data[0]["failure"] = node.NO_FAILURE
+    data[1]["failure"] = "unusable_semantics"
+    data[1]["ok"] = False
+    data[2]["failure"] = node.NO_FAILURE
+    data[3]["failure"] = "malformed_json"
+    data[3]["ok"] = False
+    summary = node.summarize(data, duration_s=24.0)
+    assert summary["failures"] == {"unusable_semantics": 1, "malformed_json": 1}
+    assert summary["invalid_output_rate"] == pytest.approx(0.5)
 
 
 def test_semantics_are_coerced_not_trusted():
