@@ -56,7 +56,7 @@ normal practice when there is no external requirement; the honesty is in the
 label.
 
 Derived from Gate 1: 6088 ms inference p50 on SmolVLM2-2.2B at 15W, and 30%
-invalid output over the probe set. Every target below is what this board was
+invalid output over the probe set as it then stood. Every target below is what this board was
 measured doing plus room for the pipeline around it, which is exactly why it
 is a budget and not an SLO.
 
@@ -64,16 +64,20 @@ is a budget and not an SLO.
 |---|---|---|---|
 | result age p50 | <= 6.5 s | 6.088 s inference + one 33 ms frame interval + preprocessing and publish, with margin | **met**, 6.163 s |
 | result age p90 | <= 6.6 s | 6.117 s baseline p90 plus the same pipeline overhead | **met**, 6.32 s worst of 29 |
-| invalid-output rate | <= 35% | measured 30%, with room for scenes the probe set does not cover | **met**, 30% |
+| invalid-output rate | <= 35% | measured 30%, with room for scenes the probe set does not cover | **met**, 10% over varied frames |
 | sustained 10 min | no `stalled` or `engine_dead`, and result age p50 within 10% first minute vs last | thermal and memory behaviour are unmeasured over that span | **met**, 0.34% drift, `healthy` throughout |
 
-**The invalid-output row is not yet honestly measured.** Four readings exist
-and none generalises: 30% (original probe set), 0% (sustained run, one live
-scene), 100% (camera face down), 0% (10 probe frames from a stationary camera,
-all returning an identical answer). The last is n~=1 wearing n=10, the same
-error `--probe-dir` was added to fix. A probe set captured with the camera
-moved between frames is the measurement; until then the row reads "met" on
-weak evidence.
+**The invalid-output rate is 10%**, from `results/probe-varied`: ten frames
+captured with the camera moved between shots, frame means spanning 94.7 to
+174.1, answers spanning `clear`, `blocked/left` and `blocked/front_left`. One
+frame failed, with `blocked` and `obstacle_location: none`.
+
+Four earlier readings each measured something narrower: 30% (original probe
+set, pre-correction tool), 0% (sustained run, one live scene), 100% (camera
+face down), 0% (ten frames from a stationary camera, every answer identical --
+n~=1 wearing n=10, the error `--probe-dir` exists to prevent). Ten varied
+frames is still a small sample, and it is the first one that measures
+generalisation rather than repetition.
 
 **The budget is stricter than the method would now produce, and was met
 anyway.** It derives from the 6088 ms baseline, taken on a sparse frame. The
@@ -93,8 +97,8 @@ anything, so p90 is the honest tail to commit to.
 
 The invalid-output target deserves a word, because a 35% ceiling looks like
 accepting failure. It is not a quality goal. The model emits unusable semantics
-on 30% of frames and the system's job is to classify every one of them rather
-than publish it; the budget exists to catch a *regression* in that rate, which
+on 10% of varied frames and the system's job is to classify every one of them
+rather than publish it; the budget exists to catch a *regression* in that rate, which
 would mean something changed in preprocessing, the prompt, or the model. Making
 the number smaller is a model problem, not a systems one, and out of scope.
 
@@ -413,39 +417,47 @@ Written before profiling. Being wrong here is a good outcome.
 
 ### Step 4: what the evidence showed -- the hypothesis held
 
-No profiler needed. Decode costs per token and prefill does not, so two
-baselines at different output lengths separate them:
+No profiler needed. GPU time is linear in output length, so a least-squares
+line through several baselines gives the per-token cost as its slope and
+prefill as its intercept:
 
-    per_token = (generate_b - generate_a) / (tokens_b - tokens_a)
-    prefill   = generate - per_token x tokens
+    generate = prefill + per_token x tokens
 
-`tools/decompose_inference.py` does this and refuses any pair whose generation
-policy differs -- the guard this project learned to need. Both runs: same model
-at `482adb5`, 448x448, greedy, seed 0. Only the scene differs.
+`tools/decompose_inference.py` does this and refuses any pair whose model or
+generation policy differs -- the guard this project learned to need. All three
+runs: same model at `482adb5`, 448x448, greedy, seed 0. Only the scene differs.
 
 | run | GPU time | tokens |
 | --- | --- | --- |
-| `model-2.2b.json` | 5.824 s | 19 |
+| `model-2.2b.json` | 5.821 s | 19 |
+| `model-2.2b-varied.json` | 5.897 s | 20 |
 | `model-2.2b-split.json` | 6.091 s | 22 |
 
-**89 ms per output token** -- against the "well under 100 ms" that the
-bandwidth arithmetic above predicted before any of it was measured.
+**91.0 ms per output token**, against the "well under 100 ms" the bandwidth
+arithmetic above predicted before any of it was measured. Residuals +6, -9 and
++3 ms on a 6 s quantity, so the line holds to 0.15%.
 
 | stage | | share of 6.355 s |
 | --- | --- | --- |
-| processor, CPU | 0.264 s | 4.2% |
-| **prefill, GPU** | **4.130 s** | **65.0%** |
-| decode, GPU | 1.961 s | 30.9% |
+| processor, CPU | 0.267 s | 4.2% |
+| **prefill, GPU** | **4.090 s** | **64.4%** |
+| decode, GPU | 2.002 s | 31.5% |
 
 Prefill dominates, as written down. So the fix space is image tiling,
 resolution and the vision tower -- not the generation path, and not the CPU
-phase, which is worth 264 ms at most.
+phase, which is worth 267 ms at most.
 
-Two points, labelled as two. It assumes prefill is the same in both runs,
-which the frozen 448x448 makes defensible since SmolVLM tiles by resolution,
-and that per-token cost is flat from 19 to 22 tokens. A profiler would measure
-the split directly; this says where to point one, for two stamps and a second
-baseline.
+**Two points were not enough, and the third proved it.** With only the 19- and
+22-token runs this read 89.1 ms and 65.0% prefill; with the 19- and 20-token
+runs, 75.3 ms and 71.2%. Pairwise slopes across the three are 73.3, 89.1 and
+97.0 ms. Two points fit a line exactly, so a two-point estimate cannot be
+wrong and cannot be checked -- the earlier version of this section labelled
+that caveat and then relied on the estimate anyway. The fit now uses every run
+and prints residuals, which makes "per-token cost is flat over this range" a
+claim the output tests rather than one the reader has to take on trust.
+
+A profiler would still measure the split directly. This says where to point
+one, for two stamps and two extra baselines.
 
 **The 7% that was wrong.** The utilisation log was read as implying ~7% of
 inference off the GPU, since a one-second window averaging 51% needs ~490 ms

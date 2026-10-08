@@ -197,6 +197,21 @@ per run and there is nothing to survive.
 
 ## 4. Get the repo and prove the core runs
 
+### Every shell starts with one line
+
+```bash
+cd ~/edge-inference-pipeline && source env.sh
+```
+
+It activates the venv, sources ROS and the workspace overlay in that order,
+and puts the repo root on `PYTHONPATH` so the nodes can import `inference`
+and `telemetry` while running from `ros2_ws`. It prints what it found and
+warns about anything missing rather than failing.
+
+**Source it, do not run it.** Running it activates the venv in a subshell that
+exits immediately, which looks exactly like the script doing nothing. It
+checks, and says so.
+
 Before any model, before any camera. This takes two minutes and rules out a
 whole class of "is it the board or is it my code" confusion later.
 

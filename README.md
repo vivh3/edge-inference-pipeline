@@ -243,15 +243,21 @@ frames from the project's own camera.
 
 | measured on hardware | value |
 |---|---|
-| invalid-output rate | **30%** (3 of 10 probe frames) |
-| breakdown by failure kind | `unusable_semantics` 3; nothing else fired |
+| invalid-output rate | **10%** (1 of 10 varied probe frames) |
+| breakdown by failure kind | `unusable_semantics` 1; nothing else fired |
 | extraction rate | 0% — the model never wrapped its JSON in prose |
 
-All three failures are the same shape: `blocked` with `obstacle_location` set
-to `none`. The model saw an obstruction and would not localise it, against a
-prompt that says to use `none` only when the path is clear. A pipeline that
-could not tell that from a usable answer would have published ten confident
-results.
+The failure is `blocked` with `obstacle_location` set to `none`: the model saw
+an obstruction and would not localise it, against a prompt that says to use
+`none` only when the path is clear. Every earlier failure took the same shape.
+A pipeline that could not tell that from a usable answer would have published
+it as a confident result.
+
+The frames are `results/probe-varied`, captured with the camera moved between
+shots — means spanning 94.7 to 174.1, answers spanning `clear`, `blocked/left`
+and `blocked/front_left`. Ten frames from a *stationary* camera previously
+gave 0% with all ten answers identical, which measures repetition, not
+generalisation.
 
 ---
 
@@ -295,7 +301,7 @@ of 94 published records. Derivation and caveats in
 |---|---|---|
 | result age p50 | <= 6.5 s | **6.464 s** |
 | result age p90 | <= 6.6 s | 6.485 s |
-| invalid-output rate | <= 35% | 0% on a representative scene |
+| invalid-output rate | <= 35% | **10%** over ten varied frames |
 | sustained 10 min | p50 within 10% first minute vs last, no `stalled` or `engine_dead` | **0.34% drift**, `healthy` throughout |
 
 The pipeline costs 12 ms per cycle: successive results are 6.447 s apart against
@@ -321,21 +327,25 @@ That rules out host-to-device transfer, synchronisation stalls, thermal throttli
 memory pressure.
 
 The remaining candidate was on-GPU work, and the hypothesis written down before
-profiling was that prefill dominates rather than decode. It does. Decode costs per
-token and prefill does not, so two baselines at different output lengths separate them
-without a profiler (`tools/decompose_inference.py`, which refuses any pair whose
-generation policy differs):
+profiling was that prefill dominates rather than decode. It does. GPU time is linear
+in output length, so a least-squares line through three baselines gives the per-token
+cost as its slope and prefill as its intercept — no profiler
+(`tools/decompose_inference.py`, which refuses any pair whose generation policy
+differs):
 
 | stage | | share of 6.355 s |
 |---|---|---|
-| processor, CPU | 0.264 s | 4.2% |
-| **prefill, GPU** | **4.130 s** | **65.0%** |
-| decode, GPU | 1.961 s | 30.9% |
+| processor, CPU | 0.267 s | 4.2% |
+| **prefill, GPU** | **4.090 s** | **64.4%** |
+| decode, GPU | 2.002 s | 31.5% |
 
-89 ms per output token, against the "well under 100 ms" the bandwidth arithmetic
-predicted beforehand. The fix space is image tiling, resolution and the vision tower.
-A two-point estimate, labelled as one — a profiler would measure the split directly,
-and this says where to point it.
+**91.0 ms per output token**, against the "well under 100 ms" the bandwidth arithmetic
+predicted beforehand, with residuals of +6, −9 and +3 ms on a 6 s quantity. The fix
+space is image tiling, resolution and the vision tower.
+
+Two points would not have been enough: pairwise slopes across the three runs are 73.3,
+89.1 and 97.0 ms, and two points fit a line exactly, so such an estimate cannot be
+checked. The residuals are what make the flat-per-token-cost assumption testable.
 
 The hypothesis is written down before profiling. Being wrong is a good README
 section. If the evidence supports none of the obvious tools, the result is

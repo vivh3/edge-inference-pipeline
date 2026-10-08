@@ -1,0 +1,67 @@
+{
+  "captured_at": "2026-10-08T23:16:03.495Z",
+  "negotiated": {
+    "width": 640,
+    "height": 480,
+    "fps": 30.0,
+    "fourcc": "MJPG",
+    "backend": "V4L2",
+    "buffer_frames": 2
+  },
+  "usable_mean_range": [
+    40.0,
+    200.0
+  ],
+  "shots": [
+    {
+      "file": "probe_00.jpg",
+      "mean_pixel": 98.6,
+      "usable": true
+    },
+    {
+      "file": "probe_01.jpg",
+      "mean_pixel": 162.4,
+      "usable": true
+    },
+    {
+      "file": "probe_02.jpg",
+      "mean_pixel": 145.4,
+      "usable": true
+    },
+    {
+      "file": "probe_03.jpg",
+      "mean_pixel": 174.1,
+      "usable": true
+    },
+    {
+      "file": "probe_04.jpg",
+      "mean_pixel": 161.1,
+      "usable": true
+    },
+    {
+      "file": "probe_05.jpg",
+      "mean_pixel": 94.7,
+      "usable": true
+    },
+    {
+      "file": "probe_06.jpg",
+      "mean_pixel": 125.5,
+      "usable": true
+    },
+    {
+      "file": "probe_07.jpg",
+      "mean_pixel": 114.5,
+      "usable": true
+    },
+    {
+      "file": "probe_08.jpg",
+      "mean_pixel": 123.1,
+      "usable": true
+    },
+    {
+      "file": "probe_09.jpg",
+      "mean_pixel": 159.3,
+      "usable": true
+    }
+  ]
+}
