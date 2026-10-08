@@ -84,6 +84,9 @@ FIELDS = [
     "queue_age",
     "preprocess_s",
     "inference_latency",
+    # Both inside inference_latency, either side of the CPU/GPU boundary.
+    "processor_s",
+    "generate_s",
     "post_processing",
     "result_age",
     # capture -> this subscriber. result_age ends at publish inside the
@@ -102,6 +105,12 @@ FIELDS = [
     "system_available_mb",
     "power_w",
 ]
+
+
+def _optional(value) -> Optional[float]:
+    """A missing split stays missing. A zero would read as "the CPU phase is
+    free", which is the opposite of what an absent measurement means."""
+    return None if value is None else round(float(value), 6)
 
 
 def row_from_record(record: dict, received_ts: float) -> dict:
@@ -123,6 +132,8 @@ def row_from_record(record: dict, received_ts: float) -> dict:
         "queue_age": round(start - capture, 6),
         "preprocess_s": round(float(record.get("preprocess_s", 0.0)), 6),
         "inference_latency": round(end - start, 6),
+        "processor_s": _optional(record.get("processor_s")),
+        "generate_s": _optional(record.get("generate_s")),
         "post_processing": round(publish - end, 6),
         "result_age": round(publish - capture, 6),
         "consumer_age": round(received_ts - capture, 6),
@@ -160,6 +171,11 @@ DISTRIBUTIONS = (
     "queue_age",
     "preprocess_s",
     "inference_latency",
+    "processor_s",
+    "generate_s",
+    # Both inside inference_latency, either side of the CPU/GPU boundary.
+    "processor_s",
+    "generate_s",
     "post_processing",
     "result_age",
     "consumer_age",

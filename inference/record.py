@@ -54,6 +54,12 @@ class RawModelOutput:
     first_token_ts: Optional[float] = None  # None if the runtime does not expose it
     output_tokens: Optional[int] = None
     engine_error: Optional[str] = None  # set when the engine raised or timed out
+    # `inference_latency` spans both of these. Split because they run on
+    # different processors and have different fixes: `processor_s` is
+    # tokenisation and image tensor preparation on the CPU, `generate_s` is
+    # prefill and decode on the GPU. None when the engine does not report them.
+    processor_s: Optional[float] = None
+    generate_s: Optional[float] = None
 
 
 # --------------------------------------------------------------------------
@@ -78,6 +84,10 @@ class PublishedResult:
     # Falls inside `queue_age`, since the worker preprocesses before the
     # engine stamps its start. Reported separately so it stays attributable.
     preprocess_s: float = 0.0
+    # Both fall inside `inference_latency`, on either side of the CPU/GPU
+    # boundary. See RawModelOutput.
+    processor_s: Optional[float] = None
+    generate_s: Optional[float] = None
 
     # --- derived durations (all from the monotonic clock) ------------------
 
@@ -115,6 +125,12 @@ class PublishedResult:
             "semantic": self.semantic,
             "validation": self.validation,
             "preprocess_s": round(self.preprocess_s, 6),
+            "processor_s": (
+                None if self.processor_s is None else round(self.processor_s, 6)
+            ),
+            "generate_s": (
+                None if self.generate_s is None else round(self.generate_s, 6)
+            ),
         }
 
 
@@ -136,4 +152,6 @@ def attach_metadata(
         semantic=semantic,
         validation=validation,
         preprocess_s=preprocess_s,
+        processor_s=raw.processor_s,
+        generate_s=raw.generate_s,
     )
