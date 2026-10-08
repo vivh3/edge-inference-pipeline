@@ -1,7 +1,7 @@
 {
   "args": {
     "fps": 30.0,
-    "latency": 4.93,
+    "latency": 6.09,
     "sigma": 0.02,
     "duration": 240.0,
     "deadline": 15.0,
@@ -20,63 +20,63 @@
   "summaries": {
     "latest": {
       "policy": "latest",
-      "duration_s": 241.42542219100005,
-      "frames_captured": 7197,
-      "frames_dropped": 7147,
-      "results_published": 49,
-      "drop_rate": 0.9930526608309017,
+      "duration_s": 240.13709439900413,
+      "frames_captured": 7155,
+      "frames_dropped": 7115,
+      "results_published": 39,
+      "drop_rate": 0.9944095038434662,
       "invalid_output_rate": 0.0,
       "extraction_rate": 0.0,
       "failures": {
-        "none": 49
+        "none": 39
       },
-      "capture_fps_measured": 29.986154802730436,
-      "publish_fps_measured": 0.20296122734429514,
+      "capture_fps_measured": 29.810133680709203,
+      "publish_fps_measured": 0.16240722866080343,
       "queue_age": {
-        "n": 49,
-        "mean": 0.017122210408179316,
-        "p50": 0.01747618799981865,
-        "p90": 0.030875260999891907,
-        "max": 0.03382463100001587
+        "n": 39,
+        "mean": 0.06570865402579493,
+        "p50": 0.01852256100391969,
+        "p90": 0.033825762002379633,
+        "max": 1.8518004619982094
       },
       "preprocess": {
-        "n": 49,
-        "mean": 1.7385836752844033e-05,
-        "p50": 1.925999868035433e-06,
-        "p90": 4.980000085197389e-06,
-        "max": 0.00035625100008473964
+        "n": 39,
+        "mean": 0.04749505433275585,
+        "p50": 1.8432001525070518e-05,
+        "p90": 3.24159991578199e-05,
+        "max": 1.8515618370001903
       },
       "inference_latency": {
-        "n": 49,
-        "mean": 4.925670068632636,
-        "p50": 4.921089099000028,
-        "p90": 5.082413240000051,
-        "max": 5.240920514999971
+        "n": 39,
+        "mean": 6.100375887640462,
+        "p50": 6.083520940002927,
+        "p90": 6.311345597001491,
+        "max": 6.47604477799905
       },
       "post_processing": {
-        "n": 49,
-        "mean": 0.00014265487755679083,
-        "p50": 0.00013009700001020974,
-        "p90": 0.00018642800000634452,
-        "max": 0.00041152000017063983
+        "n": 39,
+        "mean": 0.00045047248773372325,
+        "p50": 0.0004159399977652356,
+        "p90": 0.0006901500019012019,
+        "max": 0.0009308219960075803
       },
       "result_age": {
-        "n": 49,
-        "mean": 4.942934933918372,
-        "p50": 4.938714657999981,
-        "p90": 5.091767877999928,
-        "max": 5.266694893000022
+        "n": 39,
+        "mean": 6.166535014153991,
+        "p50": 6.122537288996682,
+        "p90": 6.360834798004362,
+        "max": 7.919437746997573
       },
-      "peak_rss_mb": 15.187968,
-      "min_system_available_mb": 16283.844608,
-      "mean_power_w": 0.0,
+      "peak_rss_mb": 119.373824,
+      "min_system_available_mb": 6375.604224,
+      "mean_power_w": 5.2124159999999975,
       "clock": "time.monotonic (CLOCK_MONOTONIC)",
-      "wall_clock_start": "2026-10-07T08:32:30.474Z",
+      "wall_clock_start": "2026-10-07T23:41:09.196Z",
       "notes": {
         "SIMULATED": "synthetic engine; service time is an input, not a measurement",
         "engine": {
           "engine": "mock",
-          "mean_latency_s": 4.93,
+          "mean_latency_s": 6.09,
           "sigma": 0.02,
           "faults": {
             "malformed": 0.0,
@@ -87,17 +87,17 @@
           },
           "note": "synthetic; not a measurement of any real model"
         },
-        "preprocess_backend": "passthrough",
+        "preprocess_backend": "opencv",
         "offered_fps": 30.0,
         "fifo_capacity": null,
         "frames_left_in_queue_at_stop": 1,
-        "overload_ratio": 147.9,
+        "overload_ratio": 182.7,
         "health": {
           "health": "healthy",
-          "seconds_since_publish": 0.0006374720001076639,
+          "seconds_since_publish": 0.008136680000461638,
           "admission_policy": "latest",
           "deadline_s": 15.0,
-          "preprocess_total_s": 0.0008519060008893575,
+          "preprocess_total_s": 1.8523071189774782,
           "consumer_errors": 0,
           "last_consumer_error": ""
         }
@@ -105,63 +105,63 @@
     },
     "fifo_bounded": {
       "policy": "fifo_bounded",
-      "duration_s": 241.4218207660001,
+      "duration_s": 244.33991453500494,
       "frames_captured": 7198,
-      "frames_dropped": 7141,
-      "results_published": 49,
-      "drop_rate": 0.9920811336482356,
+      "frames_dropped": 7150,
+      "results_published": 40,
+      "drop_rate": 0.9933314809669352,
       "invalid_output_rate": 0.0,
       "extraction_rate": 0.0,
       "failures": {
-        "none": 49
+        "none": 40
       },
-      "capture_fps_measured": 29.986133093117864,
-      "publish_fps_measured": 0.2029642550310049,
+      "capture_fps_measured": 29.98616253231522,
+      "publish_fps_measured": 0.1637063681393302,
       "queue_age": {
-        "n": 49,
-        "mean": 35.8108632272449,
-        "p50": 39.39485105499989,
-        "p90": 39.717398497999966,
-        "max": 39.83153715900016
+        "n": 40,
+        "mean": 43.28479242837439,
+        "p50": 48.71250659300131,
+        "p90": 49.02299052399758,
+        "max": 49.28549602100247
       },
       "preprocess": {
-        "n": 49,
-        "mean": 7.93055101541763e-06,
-        "p50": 2.074000121865538e-06,
-        "p90": 2.6810000690602465e-06,
-        "max": 0.0002886289998969005
+        "n": 40,
+        "mean": 1.9951300600951072e-05,
+        "p50": 1.887999678729102e-05,
+        "p90": 2.876900543924421e-05,
+        "max": 3.833699884125963e-05
       },
       "inference_latency": {
-        "n": 49,
-        "mean": 4.925646275020412,
-        "p50": 4.920972702999961,
-        "p90": 5.082381885999894,
-        "max": 5.240956444999938
+        "n": 40,
+        "mean": 6.099256324300404,
+        "p50": 6.084491519002768,
+        "p90": 6.284144125005696,
+        "max": 6.479947240004549
       },
       "post_processing": {
-        "n": 49,
-        "mean": 0.0001358743673206066,
-        "p50": 0.0001224989998718229,
-        "p90": 0.00015802600000824896,
-        "max": 0.0003903120000359195
+        "n": 40,
+        "mean": 0.000384262149418646,
+        "p50": 0.00035235499672126025,
+        "p90": 0.0004970609952579252,
+        "max": 0.0006935749988770112
       },
       "result_age": {
-        "n": 49,
-        "mean": 40.73664537663264,
-        "p50": 44.31621074999998,
-        "p90": 44.646989115999986,
-        "max": 44.83186468100007
+        "n": 40,
+        "mean": 49.38443301482421,
+        "p50": 54.79801894100092,
+        "p90": 55.18539096300083,
+        "max": 55.35399912800494
       },
-      "peak_rss_mb": 15.409152,
-      "min_system_available_mb": 16296.316928,
-      "mean_power_w": 0.0,
+      "peak_rss_mb": 119.52128,
+      "min_system_available_mb": 6375.38304,
+      "mean_power_w": 5.2134031999999975,
       "clock": "time.monotonic (CLOCK_MONOTONIC)",
-      "wall_clock_start": "2026-10-07T08:36:31.901Z",
+      "wall_clock_start": "2026-10-07T23:45:09.336Z",
       "notes": {
         "SIMULATED": "synthetic engine; service time is an input, not a measurement",
         "engine": {
           "engine": "mock",
-          "mean_latency_s": 4.93,
+          "mean_latency_s": 6.09,
           "sigma": 0.02,
           "faults": {
             "malformed": 0.0,
@@ -172,17 +172,17 @@
           },
           "note": "synthetic; not a measurement of any real model"
         },
-        "preprocess_backend": "passthrough",
+        "preprocess_backend": "opencv",
         "offered_fps": 30.0,
         "fifo_capacity": 8,
         "frames_left_in_queue_at_stop": 8,
-        "overload_ratio": 147.9,
+        "overload_ratio": 182.7,
         "health": {
           "health": "healthy",
-          "seconds_since_publish": 0.0005173969998395478,
+          "seconds_since_publish": 0.007808208996721078,
           "admission_policy": "fifo_bounded",
           "deadline_s": 15.0,
-          "preprocess_total_s": 0.0003885969997554639,
+          "preprocess_total_s": 0.0007980520240380429,
           "consumer_errors": 0,
           "last_consumer_error": ""
         }
@@ -190,63 +190,63 @@
     },
     "fifo_unbounded": {
       "policy": "fifo_unbounded",
-      "duration_s": 241.42418532500005,
+      "duration_s": 244.41004356800113,
       "frames_captured": 7198,
       "frames_dropped": 0,
-      "results_published": 49,
+      "results_published": 40,
       "drop_rate": 0.0,
       "invalid_output_rate": 0.0,
       "extraction_rate": 0.0,
       "failures": {
-        "none": 49
+        "none": 40
       },
-      "capture_fps_measured": 29.986128176741442,
-      "publish_fps_measured": 0.20296226715661173,
+      "capture_fps_measured": 29.986155305599645,
+      "publish_fps_measured": 0.16365939556355005,
       "queue_age": {
-        "n": 49,
-        "mean": 117.60985516202041,
-        "p50": 117.44724418800001,
-        "p90": 215.73892922799996,
-        "max": 235.06517008799983
+        "n": 40,
+        "mean": 118.44707510687586,
+        "p50": 115.43515363199549,
+        "p90": 212.55023020700173,
+        "max": 236.97670323800412
       },
       "preprocess": {
-        "n": 49,
-        "mean": 1.5628102003073746e-05,
-        "p50": 1.8989999261975754e-06,
-        "p90": 2.6490001800993923e-06,
-        "max": 0.0006697229998735565
+        "n": 40,
+        "mean": 2.2452174380305224e-05,
+        "p50": 2.0929001038894057e-05,
+        "p90": 2.7775997295975685e-05,
+        "max": 4.297599662095308e-05
       },
       "inference_latency": {
-        "n": 49,
-        "mean": 4.925660426591818,
-        "p50": 4.9210389559998475,
-        "p90": 5.08242484099992,
-        "max": 5.240907001999858
+        "n": 40,
+        "mean": 6.100884347099418,
+        "p50": 6.083929289998196,
+        "p90": 6.284433460998116,
+        "max": 6.480527170999267
       },
       "post_processing": {
-        "n": 49,
-        "mean": 0.00014655712246222923,
-        "p50": 0.00012929200011058128,
-        "p90": 0.00020469499986575102,
-        "max": 0.0002512439996280591
+        "n": 40,
+        "mean": 0.00045506007518270053,
+        "p50": 0.0004339890001574531,
+        "p90": 0.0005859529992449097,
+        "max": 0.0007368399965343997
       },
       "result_age": {
-        "n": 49,
-        "mean": 122.53566214573465,
-        "p50": 122.43130370699987,
-        "p90": 220.62177620800003,
-        "max": 239.77254967999988
+        "n": 40,
+        "mean": 124.54841451405045,
+        "p50": 121.31180919499457,
+        "p90": 218.57231568400312,
+        "max": 243.04582493800262
       },
-      "peak_rss_mb": 18.223104,
-      "min_system_available_mb": 16311.332864,
-      "mean_power_w": 0.0,
+      "peak_rss_mb": 122.671104,
+      "min_system_available_mb": 6371.815424,
+      "mean_power_w": 5.212415999999998,
       "clock": "time.monotonic (CLOCK_MONOTONIC)",
-      "wall_clock_start": "2026-10-07T08:40:33.324Z",
+      "wall_clock_start": "2026-10-07T23:49:13.679Z",
       "notes": {
         "SIMULATED": "synthetic engine; service time is an input, not a measurement",
         "engine": {
           "engine": "mock",
-          "mean_latency_s": 4.93,
+          "mean_latency_s": 6.09,
           "sigma": 0.02,
           "faults": {
             "malformed": 0.0,
@@ -257,17 +257,17 @@
           },
           "note": "synthetic; not a measurement of any real model"
         },
-        "preprocess_backend": "passthrough",
+        "preprocess_backend": "opencv",
         "offered_fps": 30.0,
         "fifo_capacity": null,
-        "frames_left_in_queue_at_stop": 7149,
-        "overload_ratio": 147.9,
+        "frames_left_in_queue_at_stop": 7158,
+        "overload_ratio": 182.7,
         "health": {
           "health": "healthy",
-          "seconds_since_publish": 0.000507955000102811,
+          "seconds_since_publish": 0.008530232997145504,
           "admission_policy": "fifo_unbounded",
           "deadline_s": 15.0,
-          "preprocess_total_s": 0.0007657769981506135,
+          "preprocess_total_s": 0.0008980869752122089,
           "consumer_errors": 0,
           "last_consumer_error": ""
         }

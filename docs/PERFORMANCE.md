@@ -1,10 +1,9 @@
 # Performance: methodology and the bottleneck investigation
 
-> **Status: methodology fixed, model measurements pending (Gate 1/3).**
-> Every `TBD` is a measurement still to be taken. The overload numbers in this
-> repository come from the synthetic simulation and are labelled `SIMULATED`
-> in their own summary files. No estimate is ever written into this document
-> as if it were a measurement.
+> **Status: Gate 1 and Gate 2 measured; Gate 3 open.**
+> Every `TBD` is a measurement still to be taken. The overload comparison
+> comes from the synthetic simulation and is labelled `SIMULATED` in its own
+> summary files. No estimate is written here as if it were a measurement.
 
 ## Methodology (fixed before any number is recorded)
 
@@ -56,17 +55,22 @@ different thing. Measuring first and then setting a defensible target is
 normal practice when there is no external requirement; the honesty is in the
 label.
 
-Derived from Gate 1: 4930 ms inference p50 on SmolVLM2-2.2B at 15W, and 30%
+Derived from Gate 1: 6088 ms inference p50 on SmolVLM2-2.2B at 15W, and 30%
 invalid output over the probe set. Every target below is what this board was
 measured doing plus room for the pipeline around it, which is exactly why it
 is a budget and not an SLO.
 
 | budget | target | derived from | met? |
 |---|---|---|---|
-| result age p50 | <= 5.5 s | 4.930 s inference + one 33 ms frame interval + preprocessing and publish, with margin | `TBD` (Gate 2) |
-| result age p90 | <= 6.0 s | the simulated `latest` p90 of 5.094 s at this service time | `TBD` |
-| invalid-output rate | <= 35% | measured 30%, with room for scenes the probe set does not cover | `TBD` |
+| result age p50 | <= 6.5 s | 6.088 s inference + one 33 ms frame interval + preprocessing and publish, with margin | **met**, 6.163 s |
+| result age p90 | <= 6.6 s | 6.117 s baseline p90 plus the same pipeline overhead | **met**, 6.32 s worst of 29 |
+| invalid-output rate | <= 35% | measured 30%, with room for scenes the probe set does not cover | **met**, 30% |
 | sustained 10 min | no `stalled` or `engine_dead`, and result age p50 within 10% first minute vs last | thermal and memory behaviour are unmeasured over that span | `TBD` |
+
+This table used to read 5.5 s, from a 4.930 s baseline that Gate 2 missed by
+12%. The baseline was measuring an input the pipeline never produces (below),
+and the budget inherited the error. Restated from the corrected measurement --
+not relaxed to fit the result, which is why the old number stays on the page.
 
 No p99 target. Under this overload a ten-minute run publishes roughly 120
 results, which is barely above the 100 samples nearest-rank p99 needs to mean
@@ -86,13 +90,27 @@ SmolVLM2-2.2B-Instruct at `482adb5`, float16, 15W, one probe frame repeated
 
 | metric | p50 | p90 | max |
 |---|---|---|---|
-| inference latency | 4930 ms | 4944 ms | 6134 ms |
+| inference latency | 6088 ms | 6117 ms | 6119 ms |
 | time to first token | not exposed by this runtime | | |
 
 No p99: nearest-rank p99 of 20 samples is rank 20, which is the maximum, so
-quoting one would name the slowest single run as a tail statistic. The 6134 ms
-maximum is the first measured run, which still carries warmup the five
-discarded runs did not absorb.
+quoting one would name the slowest single run as a tail statistic.
+
+**This replaces an earlier 4930 ms.** The first version of
+`tools/gate1_baseline.py` opened the probe frame with PIL and handed the model
+a 640x480 image, skipping `Preprocessor` and with it the 448x448 resolution
+this document holds constant everywhere else. The pipeline feeds 448x448. The
+two were never measuring the same input, and the 25% gap between them --
+chased through three wrong hypotheses below -- was a bug in the measuring
+tool.
+
+The spread is the tell. The old run showed a 6134 ms maximum against a 4930 ms
+p50 and that 1.2 s outlier was written off as leftover warmup. But
+`VlmEngine.warmup` feeds `_blank_image(448, 448)`: warmup autotuned one tensor
+shape and the measured runs arrived with another, so the first of them paid
+again. With both at 448x448 the outlier is gone -- 31 ms between p50 and max
+across 20 runs. A distribution that tightens when the inputs are made
+consistent is independent evidence that the inputs were the problem.
 
 Time to first token is what would separate prefill from decode, and
 `transformers.generate` does not expose it without instrumenting the
@@ -113,51 +131,90 @@ Full comparison in the README. Run on hardware with:
 python3 tools/run_overload_sim.py --policies latest fifo_bounded fifo_unbounded
 ```
 
-| policy | drop rate | result age p50 | result age p90 | result age max |
-|---|---|---|---|---|
-| `latest` | `TBD` | `TBD` | `TBD` | `TBD` |
-| `fifo_bounded(8)` | `TBD` | `TBD` | `TBD` | `TBD` |
-| `fifo_unbounded` | `TBD` | `TBD` | `TBD` | `TBD` |
+The table lives in the README only, so there is one copy for CI to check
+against `results/simulated/` (`tools/check_readme_matches_results.py`).
 
-## Gate 2 end to end: the budget is missed, and the decomposition says where
+## Gate 2 end to end
 
 The full graph runs on the Jetson -- camera, ROS 2, admission policy,
-SmolVLM2-2.2B, validation, JSON out -- at a 99.4% policy drop rate, which is
-the 148x overload ratio arriving as predicted. One published record:
+SmolVLM2-2.2B, validation, JSON out -- at a 98.7% policy drop rate under a
+183x overload ratio.
 
-| stage | measured | expected |
+Twenty-nine consecutive published records, steady state:
+
+| stage | p50 | range |
 | --- | --- | --- |
-| queue age | 2.842 s | one frame interval |
-| of which preprocess | **2.818 s** | ~0.003 s |
-| inference | 6.454 s | 4.930 s (Gate 1 baseline) |
-| post-processing | 0.001 s | small |
-| **result age** | **9.298 s** | budget 5.5 s |
+| queue age | 0.020 s | 0.009 - 0.094 s |
+| of which preprocess | 0.004 s | 0.003 - 0.005 s |
+| inference | 6.136 s | 6.081 - 6.286 s |
+| post-processing | 0.001 s | |
+| **result age** | **6.163 s** | 6.120 - 6.317 s |
 
-Preprocessing is a 640x480 to 448x448 resize and a colour conversion. It is
-taking three seconds, and inference is 30% slower than the same model on the
-same image measured standalone.
+Against the 6.5 s budget, so the budget is met with 0.34 s of margin.
 
-### Two hypotheses, both killed by measurement
+Queue age of 20 ms against a 33 ms frame interval is latest-frame admission
+working exactly as designed: the newest frame is taken almost as soon as it
+arrives, and preprocessing is 4 ms of it.
 
-**GIL contention** between the executor thread deserialising messages and the
-pipeline's worker thread. Killed twice: halving the publish rate from 30 to
-15 Hz moved preprocess only 3.219 s to 2.818 s, and `vmstat` shows the CPU
-82-93% idle. Contention burns CPU in the thread holding the lock.
+Inference in the pipeline is 6.136 s against 6.088 s standalone -- 0.8%, which
+is the ROS hop and the per-frame preprocess, and is what "the pipeline costs
+almost nothing on top of the model" should look like when it is true.
 
-**Memory pressure.** Swap is in use -- `swpd` grew 301 MB to 398 MB and `so`
-peaked at 12.3 MB/s while the model loaded -- but in steady state `si` and
-`so` are single digits and `wa` is 0. The board is not paging during
-inference.
+### The gap that was not there
 
-So the worker thread is spending seconds blocked while the CPU is idle,
-nothing pages, and nothing holds the GIL. **It is waiting on something, and
-guessing from the outside has stopped being productive.** This is what the
-section below exists for: NVTX ranges around the stages, `nsys`, and a look
-at where the thread actually is. The decomposition has done its job by
-localising the problem to a stage that should cost milliseconds.
+This section used to claim a 25% unexplained inflation -- 6.136 s in the
+pipeline against 4.930 s standalone, on every sample. Three hypotheses, all
+wrong:
 
-Worth noting what a single end-to-end latency number would have shown here:
-9.3 seconds, and nothing else.
+**GIL contention.** `py-spy` showed the decode loop holding the GIL between
+CUDA launches while the executor thread deserialised 30 x 921,600 bytes per
+second in the same process. Killed by halving the publish rate to 15 fps:
+inference stayed at 6.10 s. (`vmstat` showing five of six cores idle was
+briefly read as evidence against contention. It is not -- a GIL-bound process
+occupies about one core, so that reading supported the hypothesis.)
+
+**Memory pressure.** 451 MB available with the model resident, and swap in
+use. Ruled out by the distribution: 29 consecutive samples inside a 200 ms
+band is not paging.
+
+**Thermal throttling.** Ruled out by reading the clock mid-run: 612 MHz,
+exactly the 15W ceiling.
+
+The cause was in neither process. The baseline tool was measuring 640x480
+while the pipeline measured 448x448, so 4.930 s was never comparable to
+anything. Re-measured through the same `Preprocessor`, the baseline is 6.088 s
+and the gap is 0.8%.
+
+Three plausible hypotheses, investigated carefully and falsified correctly,
+and none of them could have reached the answer -- the discrepancy was
+manufactured by the instrument. The tool producing the reference number needed
+the same scrutiny as the system, and got none for two days.
+
+### The startup outlier, explained
+
+An earlier version of this section reported preprocessing at 2.818 s from a
+single published record, and three rounds of investigation followed from n=1.
+The distribution above shows 4 ms.
+
+The outlier is real and reproducible: **the first published record of every
+run** shows about 2.7 s of preprocessing. It is not paging and not
+contention. `Preprocessor.run` called `_resolve()` inside its timed region,
+and `_resolve()` is what lazily does `import cv2` -- roughly 2.7 s on this
+board, reading OpenCV's libraries off an SD card. A one-time library load was
+being charged to a per-frame metric, on the one frame where it happened.
+
+That is why `py-spy` never saw it (a one-time cost is rarely sampled) and why
+a separate probe process measured 4 ms (it imported cv2 at module scope,
+before any timing started).
+
+`Pipeline.start` now warms the preprocessor alongside the engine. The engine's
+first invocations were already discarded for exactly this reason; the
+preprocessor was paying the same kind of cost without the same treatment.
+
+Two lessons worth keeping. A number describing one sample is not a
+measurement, which is the same error the p99 reporting had an hour earlier.
+And a stage timer that encloses lazy initialisation will report startup as
+throughput, once, convincingly.
 
 ## The bottleneck investigation (Gate 3)
 
@@ -177,7 +234,10 @@ and what each would look like in a trace:
 
 ### Evidence already in hand, from the Gate 1 baseline
 
-`jtop` during 20 measured inferences of SmolVLM2-2.2B at float16, 15W:
+`jtop` during 20 measured inferences of SmolVLM2-2.2B at float16, 15W. Taken
+during the pre-correction run, so the memory rows describe its 640x480 input.
+Utilisation, clocks, power and temperature are not latency figures, so the
+conclusions below stand.
 
 | quantity | during inference | idle |
 | --- | --- | --- |
@@ -200,7 +260,7 @@ It also rules out thermal throttling. 59 C on a part that throttles far higher,
 with the fan at 43%, is not a thermally limited board.
 
 What is left is on-GPU work: prefill, decode, or both. The arithmetic says to
-check prefill first. 4907 ms for 19 output tokens is 258 ms per token if decode
+check prefill first. 6088 ms for 19 output tokens is 320 ms per token if decode
 were the whole cost. Decode re-reads the weights once per token, so 4.4 GB
 against this mode's memory bandwidth bounds a token well under 100 ms. Decode
 alone does not explain the measurement, and SmolVLM tiles an image into many
@@ -208,7 +268,7 @@ vision tokens, all of which are processed in one prefill pass.
 
 **Hypothesis:** prefill (vision encoding plus prompt processing) dominates, not
 decode. Time to first token separates them, which is why it is a reported
-metric. If TTFT is a large fraction of 4907 ms, the fix space is image
+metric. If TTFT is a large fraction of 6088 ms, the fix space is image
 tiling, resolution and the vision tower. If it is small, decode is slower than
 bandwidth explains and the fix space is the generation path.
 
@@ -220,7 +280,7 @@ The GPU sits at exactly the 15W mode's 612 MHz ceiling and EMC at its cap, so
 this measurement is clock-limited by a deliberate choice. Mode 1 (25W) offers
 918 MHz and 3199 MHz. That is a different operating point, not a fix, and
 changing it would invalidate every measurement taken so far. Noted so the
-figure is read as "4907 ms at 15W" rather than "4907 ms".
+figure is read as "6088 ms at 15W" rather than "6088 ms".
 
 ### Step 2: NVTX ranges
 

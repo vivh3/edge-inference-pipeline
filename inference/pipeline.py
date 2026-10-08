@@ -101,7 +101,10 @@ class Pipeline:
         if warmup:
             # Discarded before any measurement: the first invocations pay for
             # CUDA context creation and allocator growth, which describe
-            # startup rather than steady-state service time.
+            # startup rather than steady-state service time. The preprocessor
+            # pays a library import on its first call, which is the same kind
+            # of cost in a different stage.
+            self.preprocessor.warmup()
             self.engine.warmup(self.generation.warmup_runs)
         self.health = Health.HEALTHY
         self.last_publish_ts = monotonic()

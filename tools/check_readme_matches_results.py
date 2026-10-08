@@ -22,6 +22,7 @@ POLICY_BY_LABEL = {
     "fifo_unbounded": "fifo_unbounded",
 }
 CAMERA_FPS = re.compile(r"measured ([\d.]+) fps")
+BASELINE = re.compile(r"\| baseline inference latency \| (\d+) ms p50, (\d+) ms max")
 ROW = re.compile(
     r"\| `(latest|fifo_bounded\(8\)|fifo_unbounded)` \| (\d+) \| (\d+) \| "
     r"([\d.]+)% \| \*?\*?([\d.]+) s\*?\*? \| ([\d.]+) s \| ([\d.]+) s \|"
@@ -68,13 +69,35 @@ def main() -> int:
                 f"camera fps: README {claimed.group(1)}, {camera_path} {measured}"
             )
 
+    # The baseline latency is the number everything else is derived from: the
+    # performance budget, the overload ratio, the Gate 2 verdict. It drifted
+    # from its own summary file once already, while a bug in the measuring
+    # tool had it reading 4930 ms, and nothing here would have caught it.
+    baseline_path = os.path.join(ROOT, "results", "baseline", "model-2.2b.json")
+    claimed = BASELINE.search(readme)
+    if not claimed:
+        failures.append("README no longer states a baseline inference latency")
+    elif os.path.exists(baseline_path):
+        with open(baseline_path) as fh:
+            latency = json.load(fh)["inference_latency_s"]
+        for field, in_readme, in_file in [
+            ("p50", int(claimed.group(1)), round(latency["p50"] * 1000)),
+            ("max", int(claimed.group(2)), round(latency["max"] * 1000)),
+        ]:
+            if in_readme != in_file:
+                failures.append(
+                    f"baseline latency {field}: README {in_readme} ms, "
+                    f"{baseline_path} {in_file} ms"
+                )
+
     for failure in failures:
         print(failure, file=sys.stderr)
     if failures:
-        print("\nRegenerate with tools/run_overload_sim.py and update the table.", file=sys.stderr)
+        print("\nRegenerate the results and update the prose together.", file=sys.stderr)
         return 1
     print(f"README headline table matches all {len(rows)} committed summaries")
     print("README camera rate matches results/baseline/camera.json")
+    print("README baseline latency matches results/baseline/model-2.2b.json")
     return 0
 
 
