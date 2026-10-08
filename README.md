@@ -36,12 +36,13 @@ component that keeps up with its sensor produces no overload behaviour to engine
 | 0 | Core: admission policies, output contract, failure taxonomy, telemetry, overload experiment | **done** |
 | 1 | Jetson feasibility: model running, memory headroom, measured camera rate, baseline latency | **done** |
 | 2 | ROS 2 integration, performance budget, end-to-end on device | **done** |
-| 3 | Profiling, bottleneck root cause, one justified fix | sustained load **done**, profiling open |
-| 4 | Diagram, demo video, results, v0.1 | not started |
+| 3 | Bottleneck root cause, sustained load | **done**; the one optional fix was deliberately not made |
+| 4 | Diagram, demo video, results, v0.1 | in progress |
 
-Numbers not yet measured are marked `TBD` in `docs/`. No estimate is recorded as a
-measurement. The overload comparison below comes from a synthetic engine and is
-labelled `SIMULATED`; the camera and power-profile figures are measured.
+No estimate is recorded as a measurement, and where a number was inferred rather than
+measured the page says which. The overload comparison below comes from a synthetic
+engine and is labelled `SIMULATED`; everything in `results/baseline/` and
+`results/sustained/` was measured on the board.
 
 The core was built ahead of hardware deliberately. `inference/` and `telemetry/` are
 stdlib-only and import nothing from ROS, CUDA, or a camera driver at module scope,
@@ -81,7 +82,11 @@ so they port to the Jetson unchanged.
              drop rate, invalid-output rate, extraction rate, RSS, power, health
 ```
 
-Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Deployed, that is three ROS 2 nodes whose two topics are configured as opposites —
+`/frames` BEST_EFFORT depth 1 because a stale frame has negative value, `/perception`
+RELIABLE depth 100 because a lost record would bias the distribution being measured.
+Node graph, QoS reasoning and the two kinds of loss:
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
@@ -346,6 +351,14 @@ space is image tiling, resolution and the vision tower.
 Two points would not have been enough: pairwise slopes across the three runs are 73.3,
 89.1 and 97.0 ms, and two points fit a line exactly, so such an estimate cannot be
 checked. The residuals are what make the flat-per-token-cost assumption testable.
+
+**No optimisation was made, on purpose.** The fix space is the vision tower, and every
+option in it changes what the model sees — which invalidates the frozen generation
+policy every number here depends on. What it would add is one more latency number;
+what the project claims is already carried by the admission policy, the failure
+taxonomy, the loss accounting and a prediction that held. Written down because "ran
+out of time" and "decided not to" look identical in a repository, and only one is a
+judgement. Reasoning in [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md), step 5.
 
 The hypothesis is written down before profiling. Being wrong is a good README
 section. If the evidence supports none of the obvious tools, the result is
