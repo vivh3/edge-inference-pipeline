@@ -10,7 +10,8 @@ then stops:
 3. How long does one inference take?
 
 Work top to bottom. Steps 1–5 are setup, 6–10 are the milestone. Record every
-`TBD` as you go; the tables at the end are the Gate 1 deliverable.
+each measurement as you go; the tables at the end are the Gate 1
+deliverable, and they are filled in from this board.
 
 > **Verify version-specific details against NVIDIA's current documentation.**
 > JetPack releases move, and the PyTorch install path in particular changes
@@ -51,7 +52,7 @@ python3 --version                # 3.10, which matches this repo's floor
 free -h                          # confirm ~8 GB total
 ```
 
-- JetPack / L4T version: `TBD`
+- JetPack / L4T version: **6.2 / R36.4.3**, Python 3.10.12, 7.4 GB usable.
 
 **Storage note.** The NVMe SSD is optional and for model weights only. Do not
 move the root filesystem onto it unless it is trivial. Boot configuration is
@@ -326,7 +327,9 @@ Look at the formats. **MJPG usually reaches higher frame rates than YUYV** at
 the same resolution, because YUYV is uncompressed and saturates USB bandwidth.
 If 640x480 YUYV tops out at 10 fps, that is your camera, not your code.
 
-- Device and format chosen: `TBD`
+- Device and format chosen: **`/dev/video0`, MJPG 640x480**. YUYV is not
+  offered at 640x480 on this camera, and OpenCV defaults to it, so the
+  fourcc has to be set explicitly and *before* the resolution.
 
 ---
 
@@ -345,10 +348,15 @@ nominal 30 would fabricate drops that never happened.
 | quantity | value |
 |---|---|
 | requested fps | 30 |
-| **effective fps** | `TBD` |
-| interval p50 | `TBD` |
-| interval p99 | `TBD` |
-| long gaps (driver skips) | `TBD` |
+| **effective fps** | **30.027** over 28.5 s, 856 frames |
+| interval p50 | 0.0321 s |
+| interval p99 | 0.0366 s |
+| long gaps (driver skips) | 0 against a 0.0481 s threshold |
+
+The threshold is 1.5x the *measured* median, not 1.5x the requested interval.
+Against the requested 33.3 ms, an earlier version counted 100% of intervals as
+long gaps, which says the camera never once hit its nominal rate rather than
+anything about skips.
 
 Put the effective figure in the README next to "nominal 30 fps". Written to
 `results/baseline/camera.json`.
@@ -538,12 +546,15 @@ front of decode, and vision encoding in prefill is the candidate. That is
 independent support for the section 11 hypothesis, from an experiment run for
 another reason.
 
-**The invalid-output rate is 30%**, and it is the first real number for a line
-the README has carried as `TBD`. All three failures are the same shape:
+**The invalid-output rate was 30% here**, over the probe set as it then stood.
+It is 10% over `results/probe-varied`, ten frames captured with the camera
+moved between shots, which is the figure the README carries. Both failures take
+the same shape:
 `blocked` with `obstacle_location: "none"`, meaning the model saw an
 obstruction and would not localise it. The prompt says `Use "none" for
 obstacle_location only when path_status is "clear"`, so the rule enforces a
-stated instruction that the model broke on three frames out of ten.
+stated instruction that the model broke on three frames out of ten here, and
+on one of ten over the varied set.
 
 Do not relax a rule to make a model pass. That fits the contract to the model
 and destroys what the contract is for. If a rule is wrong it is wrong on its
