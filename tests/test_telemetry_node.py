@@ -220,3 +220,48 @@ def test_an_empty_run_summarises_without_dividing_by_zero():
     assert summary["records"] == 0
     assert summary["invalid_output_rate"] is None
     assert summary["first_minute_result_age_p50"] is None
+
+
+# --------------------------------------------------------------------------
+# The CPU/GPU split inside inference_latency
+# --------------------------------------------------------------------------
+
+
+def test_the_split_is_carried_through():
+    # The two must sum to inference_latency, which for RECORD is 6.136 s.
+    record = dict(RECORD, processor_s=0.430, generate_s=5.706)
+    row = node.row_from_record(record, received_ts=106.2)
+    assert row["processor_s"] == pytest.approx(0.430)
+    assert row["generate_s"] == pytest.approx(5.706)
+    # The two should account for inference_latency, within rounding.
+    assert row["processor_s"] + row["generate_s"] == pytest.approx(
+        row["inference_latency"], abs=0.002
+    )
+
+
+def test_a_missing_split_stays_missing_rather_than_zero():
+    # MockEngine does not report it, and a 0.0 would read as "the CPU phase is
+    # free" instead of "nobody measured it".
+    row = node.row_from_record(RECORD, received_ts=106.2)
+    assert row["processor_s"] is None
+    assert row["generate_s"] is None
+
+
+def test_an_unmeasured_split_is_left_out_of_the_summary():
+    data = rows([6.1] * 3)
+    for row in data:
+        row["processor_s"] = None
+        row["generate_s"] = None
+    summary = node.summarize(data, duration_s=18.0)
+    assert "processor_s" not in summary
+    assert "generate_s" not in summary
+
+
+def test_a_measured_split_is_summarised():
+    data = rows([6.1] * 3)
+    for row in data:
+        row["processor_s"] = 0.4
+        row["generate_s"] = 5.7
+    summary = node.summarize(data, duration_s=18.0)
+    assert summary["processor_s"]["p50"] == pytest.approx(0.4)
+    assert summary["generate_s"]["p50"] == pytest.approx(5.7)

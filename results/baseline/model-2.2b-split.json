@@ -1,0 +1,182 @@
+{
+  "wall_clock": "2026-10-08T12:52:31.165Z",
+  "clock": "time.monotonic (CLOCK_MONOTONIC)",
+  "model": "HuggingFaceTB/SmolVLM2-2.2B-Instruct",
+  "device": "cuda",
+  "dtype": "float16",
+  "engine": {
+    "engine": "vlm",
+    "model_id": "HuggingFaceTB/SmolVLM2-2.2B-Instruct",
+    "revision_requested": "482adb537c021c86670beed01cd58990d01e72e4",
+    "revision_loaded": null,
+    "device": "cuda",
+    "dtype": "float16",
+    "generation": {
+      "prompt_sha256_prefix": "3b0badbc7204",
+      "prompt_chars": 382,
+      "image_resolution": "448x448",
+      "max_new_tokens": 48,
+      "decoding": "greedy",
+      "seed": 0,
+      "warmup_runs": 5
+    }
+  },
+  "image": "probe_00.jpg",
+  "generation_policy": {
+    "prompt_sha256_prefix": "3b0badbc7204",
+    "prompt_chars": 382,
+    "image_resolution": "448x448",
+    "max_new_tokens": 48,
+    "decoding": "greedy",
+    "seed": 0,
+    "warmup_runs": 5
+  },
+  "runs": 20,
+  "inference_latency_s": {
+    "n": 20,
+    "mean": 6.3571,
+    "p50": 6.3551,
+    "p90": 6.3608,
+    "max": 6.3781
+  },
+  "processor_s": {
+    "n": 20,
+    "mean": 0.2655,
+    "p50": 0.2641,
+    "p90": 0.2682,
+    "max": 0.2812
+  },
+  "generate_s": {
+    "n": 20,
+    "mean": 6.0916,
+    "p50": 6.0911,
+    "p90": 6.0967,
+    "max": 6.0983
+  },
+  "time_to_first_token_s": null,
+  "output_tokens": {
+    "n": 20,
+    "mean": 22.0,
+    "p50": 22.0,
+    "p90": 22.0,
+    "max": 22.0
+  },
+  "contract": {
+    "valid": 20,
+    "valid_rate": 1.0,
+    "outcomes": {
+      "none": 20
+    },
+    "extraction_rate": 0.0
+  },
+  "memory": {
+    "before_load": {
+      "stage": "before model load",
+      "process_rss_mb": 14.1,
+      "system_available_mb": 6130.9,
+      "system_total_mb": 7619.8,
+      "power_w": 5.61
+    },
+    "after_load": {
+      "stage": "after load + warmup",
+      "process_rss_mb": 1359.5,
+      "system_available_mb": 581.7,
+      "system_total_mb": 7619.8,
+      "power_w": 15.11
+    },
+    "steady": {
+      "stage": "steady state",
+      "process_rss_mb": 1354.1,
+      "system_available_mb": 578.6,
+      "system_total_mb": 7619.8,
+      "power_w": 15.55
+    }
+  },
+  "power_rails": [
+    "VDD_IN"
+  ],
+  "sample_outputs": [
+    {
+      "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"front_left\"}",
+      "failure": "none"
+    },
+    {
+      "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"front_left\"}",
+      "failure": "none"
+    },
+    {
+      "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"front_left\"}",
+      "failure": "none"
+    }
+  ],
+  "probe_set": {
+    "frames": 10,
+    "valid": 10,
+    "valid_rate": 1.0,
+    "outcomes": {
+      "none": 10
+    },
+    "per_frame": [
+      {
+        "file": "probe_00.jpg",
+        "failure": "none",
+        "detail": "",
+        "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"front_left\"}"
+      },
+      {
+        "file": "probe_01.jpg",
+        "failure": "none",
+        "detail": "",
+        "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"front_left\"}"
+      },
+      {
+        "file": "probe_02.jpg",
+        "failure": "none",
+        "detail": "",
+        "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"front_left\"}"
+      },
+      {
+        "file": "probe_03.jpg",
+        "failure": "none",
+        "detail": "",
+        "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"front_left\"}"
+      },
+      {
+        "file": "probe_04.jpg",
+        "failure": "none",
+        "detail": "",
+        "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"front_left\"}"
+      },
+      {
+        "file": "probe_05.jpg",
+        "failure": "none",
+        "detail": "",
+        "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"left\"}"
+      },
+      {
+        "file": "probe_06.jpg",
+        "failure": "none",
+        "detail": "",
+        "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"front_left\"}"
+      },
+      {
+        "file": "probe_07.jpg",
+        "failure": "none",
+        "detail": "",
+        "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"front_left\"}"
+      },
+      {
+        "file": "probe_08.jpg",
+        "failure": "none",
+        "detail": "",
+        "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"left\"}"
+      },
+      {
+        "file": "probe_09.jpg",
+        "failure": "none",
+        "detail": "",
+        "text": " {\"path_status\": \"blocked\", \"obstacle_location\": \"front_left\"}"
+      }
+    ]
+  }
+}

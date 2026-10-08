@@ -1,0 +1,20 @@
+{
+  "runs": [
+    "model-2.2b.json",
+    "model-2.2b-split.json"
+  ],
+  "tokens": [
+    19.0,
+    22.0
+  ],
+  "generate_s": [
+    5.8237,
+    6.0911
+  ],
+  "per_token_s": 0.089133,
+  "inference_s": 6.3551,
+  "processor_s": 0.2641,
+  "prefill_s": 4.130167,
+  "decode_s": 1.960933,
+  "method": "two baselines at different output lengths; see module docstring"
+}
