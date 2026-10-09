@@ -424,12 +424,29 @@ inference/     stdlib-only, hardware-independent core; the argument lives here
   config.py      the frozen generation policy
   pipeline.py    async worker, health state, watchdog
 telemetry/     three metrics, rates, resource sampling, CSV/JSON output
-tools/         overload experiment, camera and baseline measurement, plotting
+tools/         measurement and analysis, each one runnable on its own
+  run_overload_sim.py        the headline policy comparison, synthetic engine
+  measure_camera.py          what the camera actually delivers
+  capture_probe_set.py       a probe set of varied scenes
+  gate1_baseline.py          model latency, memory, contract rate
+  decompose_inference.py     prefill vs decode from several baselines
+  summarize_tegrastats.py    clocks, power and thermals over a run
+  run_sustained.sh           the sustained run, unattended
+  check_readme_matches_results.py   CI guard: prose against committed data
+  plot_results.py            figures from the result CSVs
+ros2_ws/       four thin ROS 2 nodes over the core: capture, inference,
+               telemetry, consumer
 tests/         the contract, the policies, the capture path, the failure paths
-docs/          architecture, Jetson setup, performance methodology
-results/       simulated/ (now), baseline/ optimized/ traces/ (Gate 1-3)
-ros2_ws/       Gate 2: integration plumbing, a thin wrapper over the core
+docs/          ARCHITECTURE, SETUP-jetson, PERFORMANCE, DEMO
+results/       baseline/ (Gate 1), simulated/ (the policy comparison),
+               sustained/ (Gate 2), probe*/ (manifests only; the frames are
+               photographs of a real room and stay local)
+env.sh         one line of per-shell setup: venv, ROS, workspace, PYTHONPATH
 ```
+
+`results/optimized/` and `results/traces/` are empty: Gate 3 deliberately made no
+optimisation and ran no profiler, for the reasons in
+[`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) steps 3 and 5.
 
 ---
 

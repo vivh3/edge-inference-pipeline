@@ -12,7 +12,13 @@ results/traces/*.nsys-rep
 results/traces/*.sqlite
 
 # Probe frames are photographs of a real room. The manifest records the
-# capture settings and per-frame brightness, which is what a reader needs to
-# judge the set; the images themselves stay local.
-results/probe/*.jpg
-results/probe/*.png
+# capture settings and per-frame brightness, and the baseline JSON records the
+# per-frame validation outcome, which is what a reader needs to judge the set;
+# the images themselves stay local.
+#
+# The glob covers every probe set, not just results/probe/. probe-live/ and
+# probe-varied/ were added later and committed twenty photographs to a public
+# repository before anyone noticed, because the pattern named one directory
+# instead of the kind of thing it was protecting.
+results/probe*/*.jpg
+results/probe*/*.png
