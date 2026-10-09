@@ -60,8 +60,8 @@ flowchart LR
     inf["inference_node<br/>admission -> model<br/>-> validation"]
     tel["telemetry_node<br/>CSV + summary<br/>per record"]
     con["consumer_node<br/>decides at 10 Hz<br/>proceed / hold / no_data"]
-    mw(["middleware loss<br/>10-28% of frames"])
-    pol(["policy drop<br/>98.7% of arrivals"])
+    mw(["middleware loss<br/>9.3% of frames"])
+    pol(["policy drop<br/>99.4% of arrivals"])
 
     cam -->|"UVC, MJPG 640x480"| cap
     cap -->|"/frames · StampedFrame<br/>BEST_EFFORT · KEEP_LAST 1"| inf
@@ -86,17 +86,25 @@ involved looks healthy and `ros2 node list` shows both. Diagnose it with
 **Two losses, two names.** Frames disappear twice over and reporting one
 number would blame the middleware's losses on a design decision:
 
-- **Middleware loss**, 10-28%, before the policy ever sees the frame. The
-  board cannot deserialise 30 x 921,600 bytes per second, so DDS drops them.
+Figures below are the twelve-minute run on a representative scene,
+`results/sustained/`.
+
+- **Middleware loss**, 9.3%, before the policy ever sees the frame. The board
+  cannot deserialise 30 x 921,600 bytes per second, so DDS drops them.
   Recovered from gaps in the trusted `frame_id` sequence, which is why that
   field is stamped by the publisher rather than inferred downstream.
-- **Policy drop**, 98.7% of what arrives. Deliberate: capacity-1 overwrite,
+- **Policy drop**, 99.4% of what arrives. Deliberate: capacity-1 overwrite,
   newest frame wins.
 
-The rate is not stable, either, which is itself worth recording: middleware
-loss fell from 28% to 10% over one twelve-minute run as the process settled,
-with no change in configuration. A single number quoted from the first minute
-would have been wrong by a factor of three.
+**Every frame is accounted for.** At the last report: 1678 lost of 17998
+stamped leaves 16320 arrivals; 16225 dropped plus 93 published plus 2 in
+flight is 16320. The two losses sum to the whole without either absorbing the
+other, which is the point of counting them separately.
+
+The middleware rate is not stable, which is worth recording on its own: it ran
+6.4% in the first minute, peaked near 29%, and settled at 9.3% as the process
+warmed, with no change in configuration. A single number quoted from the first
+minute would have been wrong fourfold.
 
 ## The consumer decides faster than the producer produces
 
