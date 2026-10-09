@@ -167,8 +167,8 @@ against `results/simulated/` (`tools/check_readme_matches_results.py`).
 ## Gate 2 end to end
 
 The full graph runs on the Jetson -- camera, ROS 2, admission policy,
-SmolVLM2-2.2B, validation, JSON out -- at a 98.7% policy drop rate under a
-183x overload ratio.
+SmolVLM2-2.2B, validation, JSON out -- at a 99.4% policy drop rate under a
+183x overload ratio, with middleware loss counted separately at 9.3%.
 
 Twenty-nine consecutive published records, steady state:
 
