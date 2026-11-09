@@ -3,16 +3,15 @@
 ## The problem this system solves
 
 A camera produces frames at a rate the model cannot match. Offered load is
-~30 frames/second; a multimodal model on an 8 GB Jetson services frames on
-the order of hundreds of milliseconds. The system is therefore in permanent
-overload by an order of magnitude, and that is the normal operating
-condition, not an exceptional one.
+~30 frames/second; a multimodal model on an 8 GB Jetson services one frame in
+about six seconds. The system is therefore in permanent overload by a factor
+of 183, and that is the normal operating condition, not an exceptional one.
 
 The design question is not "how do we go faster". It is **which frames get
 served, how old the answer is when it arrives, and what the consumer is told
 when something goes wrong.**
 
-Gate 1 measurements so far: Jetson Orin Nano Super, JetPack 6.2 / L4T 36.4.3,
+Measured on: Jetson Orin Nano Super, JetPack 6.2 / L4T 36.4.3,
 `nvpmodel` mode 0 (15W), camera delivering a measured 30.027 fps.
 
 ## Dataflow
@@ -50,7 +49,7 @@ Gate 1 measurements so far: Jetson Orin Nano Super, JetPack 6.2 / L4T 36.4.3,
 
 ## ROS 2 topology, and the one QoS decision that matters
 
-The dataflow above is the logical pipeline. Deployed, it is three nodes, and
+The dataflow above is the logical pipeline. Deployed, it is four nodes, and
 the interesting part is that the two topics are configured as opposites.
 
 ```mermaid

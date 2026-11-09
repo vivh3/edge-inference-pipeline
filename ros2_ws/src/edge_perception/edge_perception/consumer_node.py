@@ -55,8 +55,12 @@ PARAMETERS = {
     # demonstrating. 10 Hz against a result every 6.4 s.
     "decide_hz": 10.0,
     # A result older than this is not usable as a current view. Set from the
-    # measured result age (6.46 s p50) plus one service time, so a single
-    # slow inference does not flip the state while the pipeline is healthy.
+    # measured result age (6.46 s p50) plus one service time. That is also how
+    # old a record normally gets before the next one replaces it, so the
+    # margin is thin: over the sustained run a record peaked at 12.9 s at the
+    # median and passed 13.0 s in 2 of 93 cycles, each of which reads as a
+    # brief `hold` on a healthy pipeline. A real consumer would take this
+    # limit from a requirement rather than from the pipeline's own timing.
     "stale_after_s": 13.0,
     # Past this, the pipeline is not merely slow, it has stopped.
     "no_data_after_s": 30.0,

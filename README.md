@@ -4,8 +4,8 @@ An asynchronous perception pipeline running a multimodal model **slower than its
 own sensor**, engineered to behave correctly anyway.
 
 A camera offers ~30 frames per second. A vision-language model on an 8 GB Jetson
-takes hundreds of milliseconds per frame. The system is permanently overloaded by
-an order of magnitude, and that is its normal operating condition. This project is
+takes about six seconds per frame. The system is permanently overloaded by a
+factor of 183, and that is its normal operating condition. This project is
 about what it does in that condition: which frames it serves, how old the answer is
 when it arrives, and what it tells the consumer when something goes wrong.
 
@@ -37,7 +37,7 @@ component that keeps up with its sensor produces no overload behaviour to engine
 | 1 | Jetson feasibility: model running, memory headroom, measured camera rate, baseline latency | **done** |
 | 2 | ROS 2 integration, performance budget, end-to-end on device | **done** |
 | 3 | Bottleneck root cause, sustained load | **done**; the one optional fix was deliberately not made |
-| 4 | Diagram, demo video, results, v0.1 | diagram and shot list done; recording open |
+| 4 | Diagram, demo video, results, v0.1 | diagram and demo runbook done; recording open |
 
 No estimate is recorded as a measurement, and where a number was inferred rather than
 measured the page says which. The overload comparison below comes from a synthetic
@@ -76,7 +76,7 @@ so they port to the Jetson unchanged.
   structured JSON output   <-- explicit unknown states, always well-formed
       |
       v
-  mock consumer            <-- logger / dashboard. Nothing safety-flavoured.
+  consumer_node            <-- advisory state at 10 Hz. Logged, never actuated.
 
   telemetry: queue age, inference latency, post-processing, result age,
              drop rate, invalid-output rate, extraction rate, RSS, power, health
@@ -317,25 +317,25 @@ of 94 published records. Derivation and caveats in
 | invalid-output rate | <= 35% | **10%** over ten varied frames |
 | sustained 10 min | p50 within 10% first minute vs last, no `stalled` or `engine_dead` | **0.34% drift**, `healthy` throughout |
 
-The pipeline costs 12 ms per cycle: successive results are 6.447 s apart against
-6.438 s of inference, a 99.8% duty cycle. Everything that is not the model —
+The pipeline costs 12 ms per cycle: that is the median gap between one inference
+ending and the next starting, against 6.438 s of inference, a 99.8% duty cycle. Everything that is not the model —
 queueing, preprocessing, validation, publishing — rounds to nothing.
 
 An earlier attempt at the sustained run returned 94 records of which every one failed
 validation, because the camera was face down. Re-pointed, the invalid rate is 0% and
-latency rises 4%: scene content is a latency input, since output length drives
+latency rises 4.6%: scene content is a latency input, since output length drives
 generation time and the frozen generation policy cannot fix what the camera sees.
 
 ---
 
 ## The bottleneck investigation
 
-> Gate 3, in progress. Method, hypothesis written before profiling, and the trace
+> Gate 3, closed. Method, hypothesis written before measuring, and the trace
 > signature of each candidate are in [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
 
 Four of six candidates are eliminated from a 1 Hz resource log over the sustained run
 (`results/sustained/`): the GPU reads 90–100% in 550 of 752 samples with its clock's
-10th percentile on the 15W ceiling, tj plateaus at 62.8 °C, and memory does not move.
+10th percentile on the 15W ceiling, tj sits at a median 62.8 °C, and memory does not move.
 That rules out host-to-device transfer, synchronisation stalls, thermal throttling and
 memory pressure.
 
@@ -356,8 +356,8 @@ differs):
 predicted beforehand, with residuals of +6, −9 and +3 ms on a 6 s quantity. The fix
 space is image tiling, resolution and the vision tower.
 
-Two points would not have been enough: pairwise slopes across the three runs are 73.3,
-89.1 and 97.0 ms, and two points fit a line exactly, so such an estimate cannot be
+Two points would not have been enough: pairwise slopes across the three runs are 75.3,
+89.9 and 97.2 ms, and two points fit a line exactly, so such an estimate cannot be
 checked. The residuals are what make the flat-per-token-cost assumption testable.
 
 **No optimisation was made, on purpose.** The fix space is the vision tower, and every
@@ -368,11 +368,8 @@ taxonomy, the loss accounting and a prediction that held. Written down because "
 out of time" and "decided not to" look identical in a repository, and only one is a
 judgement. Reasoning in [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md), step 5.
 
-The hypothesis is written down before profiling. Being wrong is a good README
-section. If the evidence supports none of the obvious tools, the result is
-"profiling showed X dominated, so optimising Y would not have addressed the system
-bottleneck". That is a stronger result than forcing a tool in. TensorRT, quantisation and Nsight are
-instruments, not success criteria.
+TensorRT, quantisation and Nsight are instruments, not success criteria. None was
+needed to answer the question, so none was forced in.
 
 ---
 
@@ -406,7 +403,7 @@ Output: `results/simulated/<policy>/{results.csv,summary.json}` and
 `comparison.json`.
 
 Jetson setup: [`docs/SETUP-jetson.md`](docs/SETUP-jetson.md).
-Demo shot list: [`docs/DEMO.md`](docs/DEMO.md).
+Demo runbook: [`docs/DEMO.md`](docs/DEMO.md).
 
 ---
 
@@ -495,7 +492,7 @@ optimisation and ran no profiler, for the reasons in
 
 ## Before this could affect actuation
 
-Nothing here is safety architecture, and the mock consumer is a logger on purpose.
+Nothing here is safety architecture, and `consumer_node` only logs an advisory, on purpose.
 Before output of this kind could move an actuator, at minimum:
 
 - **A calibrated, validated confidence signal**, which this deliberately lacks.
@@ -530,4 +527,4 @@ supervision beyond a basic watchdog.
 ## Licence
 
 MIT, see [`LICENSE`](LICENSE). Model weights carry their own licence, recorded in the
-versions table once selected.
+versions table.

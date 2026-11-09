@@ -1,6 +1,9 @@
 # ROS 2 workspace (Gate 2)
 
-Not yet implemented. Scoped, so it does not quietly grow.
+Four nodes, built and run end to end on the Jetson. Scoped, so it does not
+quietly grow. The sections below are kept in the order the work happened:
+what was measured before the layout was designed, the QoS decision, and what
+the first runs found.
 
 ROS 2 Humble is used here as **integration plumbing plus one considered QoS
 decision**. That is the accurate description of the depth involved, and it is
@@ -30,17 +33,20 @@ SmolVLM2-2.2B loaded. Four nodes plus cv2 in the capture node and some frame
 buffers leaves roughly 350 MB. Tight, and worth watching during the
 end-to-end run, but the 2.2B stays.
 
-## Planned nodes
+## The nodes
 
 Thin wrappers over `inference/` and `telemetry/`, which already hold all the
-behaviour. A node should own message conversion and nothing else.
+behaviour. A node owns message conversion and little else.
 
-| node | wraps | state |
-|---|---|---|
-| `capture_node` | `inference.capture.WebcamSource` | **written, not yet run** |
-| `inference_node` | `inference.pipeline.Pipeline` (admission policy, engine, validation) | planned |
-| `consumer_node` | mock consumer: logs the published JSON record | planned |
-| `telemetry_node` | `telemetry.metrics.Metrics` snapshots on a timer | planned |
+| node | does |
+|---|---|
+| `capture_node` | wraps `inference.capture.WebcamSource`; stamps `frame_id` and `capture_ts`, publishes `/frames` |
+| `inference_node` | wraps `inference.pipeline.Pipeline` (admission policy, engine, validation); publishes `/perception` and counts both kinds of loss |
+| `telemetry_node` | subscribes to `/perception`; writes one CSV row per record and a summary |
+| `consumer_node` | decides `proceed` / `hold` / `no_data` at 10 Hz from the newest record; publishes `/advisory`, actuates nothing |
+
+Topology and the QoS table are in
+[`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md).
 
 ## The one QoS decision
 
