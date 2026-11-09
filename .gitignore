@@ -22,3 +22,10 @@ results/traces/*.sqlite
 # instead of the kind of thing it was protecting.
 results/probe*/*.jpg
 results/probe*/*.png
+
+# Demo recordings are terminal casts, plus a gif made from one. Anything else
+# that lands here stays local: the telemetry CSV a demo run writes, and above
+# all video or stills of the rig, which show the same room the probe frames do.
+results/demo/*
+!results/demo/*.cast
+!results/demo/*.gif

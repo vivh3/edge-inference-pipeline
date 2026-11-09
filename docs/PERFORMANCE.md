@@ -62,10 +62,14 @@ is a budget and not an SLO.
 
 | budget | target | derived from | met? |
 |---|---|---|---|
-| result age p50 | <= 6.5 s | 6.088 s inference + one 33 ms frame interval + preprocessing and publish, with margin | **met**, 6.163 s |
-| result age p90 | <= 6.6 s | 6.117 s baseline p90 plus the same pipeline overhead | **met**, 6.32 s worst of 29 |
+| result age p50 | <= 6.5 s | 6.088 s inference + one 33 ms frame interval + preprocessing and publish, with margin | **met**, 6.464 s |
+| result age p90 | <= 6.6 s | 6.117 s baseline p90 plus the same pipeline overhead | **met**, 6.485 s |
 | invalid-output rate | <= 35% | measured 30%, with room for scenes the probe set does not cover | **met**, 10% over varied frames |
 | sustained 10 min | no `stalled` or `engine_dead`, and result age p50 within 10% first minute vs last | thermal and memory behaviour are unmeasured over that span | **met**, 0.34% drift, `healthy` throughout |
+
+The result-age figures are the sustained run in `results/sustained/`, 94
+records on a representative scene. The first end-to-end run, 29 records on a
+sparser scene, came in at 6.163 s and is described under Gate 2 below.
 
 **The invalid-output rate is 10%**, from `results/probe-varied`: ten frames
 captured with the camera moved between shots, frame means spanning 94.7 to
@@ -91,9 +95,9 @@ This table used to read 5.5 s, from a 4.930 s baseline that Gate 2 missed by
 and the budget inherited the error. Restated from the corrected measurement --
 not relaxed to fit the result, which is why the old number stays on the page.
 
-No p99 target. Under this overload a ten-minute run publishes roughly 120
-results, which is barely above the 100 samples nearest-rank p99 needs to mean
-anything, so p90 is the honest tail to commit to.
+No p99 target. Under this overload a ten-minute run publishes 94 results,
+which is below the 100 samples nearest-rank p99 needs to mean anything, so p90
+is the honest tail to commit to.
 
 The invalid-output target deserves a word, because a 35% ceiling looks like
 accepting failure. It is not a quality goal. The model emits unusable semantics
@@ -142,16 +146,12 @@ again. With both at 448x448 the outlier is gone -- 31 ms between p50 and max
 across 20 runs. A distribution that tightens when the inputs are made
 consistent is independent evidence that the inputs were the problem.
 
-Time to first token is what would separate prefill from decode, and
-`transformers.generate` does not expose it without instrumenting the
-generation loop. That is the measurement the section below needs, and the
-reason NVTX ranges or a profiler are the next step rather than more runs.
-
-Time to first token is reported separately **if the runtime exposes it
-cleanly**. It separates prefill (vision encoding and prompt processing, one
-pass) from decode (autoregressive, per token), which are different costs with
-different fixes. If extracting it needs invasive instrumentation, skip it. It
-is not worth fighting the runtime for.
+Time to first token would separate prefill (vision encoding and prompt
+processing, one pass) from decode (autoregressive, per token), which are
+different costs with different fixes. `transformers.generate` does not expose
+it without instrumenting the generation loop, and the rule set beforehand was
+to skip it if it needed that. Gate 3 gets the same split another way, from
+baselines at different output lengths.
 
 ## Overload behaviour
 
@@ -180,7 +180,8 @@ Twenty-nine consecutive published records, steady state:
 | post-processing | 0.001 s | |
 | **result age** | **6.163 s** | 6.120 - 6.317 s |
 
-Against the 6.5 s budget, so the budget is met with 0.34 s of margin.
+Against the 6.5 s budget that is 0.34 s of margin, on this scene. The
+sustained run below, on a richer scene, leaves 36 ms.
 
 Queue age of 20 ms against a 33 ms frame interval is latest-frame admission
 working exactly as designed: the newest frame is taken almost as soon as it
@@ -240,8 +241,8 @@ Result age p50 moved 6.4438 s to 6.4659 s between the first minute and the
 last: **0.34% against a 10% budget**. Health stayed `healthy` for the whole
 run, no `degraded`, no `stalled`. Memory held between 418 and 433 MB.
 
-**The pipeline costs 12 ms per cycle.** Successive results are 6.447 s apart
-against 6.438 s of inference, so the worker is idle 12 ms between frames -- a
+**The pipeline costs 12 ms per cycle.** That is the median gap between one
+inference ending and the next starting, against 6.438 s of inference -- a
 99.8% duty cycle. Everything outside the model is queueing, preprocessing,
 validation and publishing, and it rounds to nothing.
 
@@ -322,7 +323,7 @@ and what each would look like in a trace:
 | synchronisation stalls | GPU idle gaps aligned with CPU-side waits |
 | memory pressure | allocator churn, swap, or throttling under sustained load |
 
-### Evidence already in hand, from the Gate 1 baseline
+### Evidence already in hand, from the sustained run
 
 `tegrastats` at 1 Hz across the 12.5-minute sustained run, 15W:
 `results/sustained/tegrastats-sustained.log`, summarised by
@@ -351,11 +352,14 @@ screenshot cannot answer the question the table exists to answer -- whether the
 clock *held* -- and nobody else can regenerate one.
 
 The idle column describes weight loading, not an idle board: 115 of the run's
-152 sub-50% samples are one contiguous stretch at the start, CPU-bound at 94%
-summed with the GPU parked at 305 MHz and the module drawing 6 W. That is why
+152 sub-50% samples are one contiguous stretch at the start, CPU-bound at a
+median 88% summed with the GPU parked at 305 MHz and the module drawing 6 W. That is why
 "idle" CPU reads higher than busy CPU.
 
-Within the longest busy stretch, first ten samples against last ten:
+Within the longest uninterrupted busy stretch, first ten samples against last
+ten. That stretch is 48 samples: the once-per-cycle dips below 50% split the
+run into 33 stretches, so this table shows that nothing moves inside a
+stretch and says nothing about the run from end to end.
 
 | quantity | first | last | delta |
 | --- | --- | --- | --- |
@@ -367,14 +371,16 @@ Within the longest busy stretch, first ten samples against last ten:
 
 **Thermal throttling is ruled out, now over twelve minutes.** The clock's 10th
 percentile is 611 MHz against a 612 MHz high; one sample in 534 dipped to 509
-and the rest held. tj reaches 62.8 C and plateaus -- the drift table moves it
-0.1 C -- against a part that throttles far higher. An earlier two-minute run
-showed tj still climbing at the end and this document said so, scoping the
-claim to that length. Twelve minutes settles it.
+and the rest held. That is the whole-run evidence, and it is the clock rather
+than the temperature that answers the question. tj sits at 62.8 C at the
+median, 63.3 C at the 90th percentile and 63.8 C at its highest across the 534
+busy samples, against a part that throttles far higher. An earlier two-minute
+run showed tj still climbing at the end and this document said so, scoping the
+claim to that length.
 
-Memory is ruled out on the same evidence: RAM and swap do not move across the
-measured window. The growth to 533 MB of swap happens during weight loading,
-before the first timed result.
+Memory is ruled out from the same distribution: RAM is 7069 MB at the median
+and 7070 at the 90th percentile, swap 533 and 535. The low ends of both ranges
+are the first samples after weight loading.
 
 Host-to-device transfer and synchronisation stalls are ruled out: both show as
 GPU idle gaps aligned with CPU-side waits, and the GPU reads 90-100% in 550 of
@@ -427,6 +433,13 @@ prefill as its intercept:
 generation policy differs -- the guard this project learned to need. All three
 runs: same model at `482adb5`, 448x448, greedy, seed 0. Only the scene differs.
 
+One of the three points is derived. `model-2.2b.json` was taken before the
+baseline tool reported the CPU and GPU phases separately, so its GPU time is
+its 6.088 s inference less the 0.2665 s processor phase measured in the
+varied run, which the tool borrows from the first run that reports one. The
+processor phase depends on resolution and prompt, both frozen, and the two
+runs that do measure it differ by 2.4 ms.
+
 | run | GPU time | tokens |
 | --- | --- | --- |
 | `model-2.2b.json` | 5.821 s | 19 |
@@ -449,8 +462,8 @@ phase, which is worth 267 ms at most.
 
 **Two points were not enough, and the third proved it.** With only the 19- and
 22-token runs this read 89.1 ms and 65.0% prefill; with the 19- and 20-token
-runs, 75.3 ms and 71.2%. Pairwise slopes across the three are 73.3, 89.1 and
-97.0 ms. Two points fit a line exactly, so a two-point estimate cannot be
+runs, 75.3 ms and 71.2%. Pairwise slopes across the three committed points
+are 75.3, 89.9 and 97.2 ms. Two points fit a line exactly, so a two-point estimate cannot be
 wrong and cannot be checked -- the earlier version of this section labelled
 that caveat and then relied on the estimate anyway. The fit now uses every run
 and prints residuals, which makes "per-token cost is flat over this range" a
@@ -482,11 +495,6 @@ Optional, and skipped if instrumentation fights back. When cheap, annotate
 shows kernels, and the question is which *application stage* they belong to.
 
 ### Step 3: profile -- not run, and why
-
-```bash
-nsys profile --trace=cuda,nvtx,osrt --output=results/traces/baseline \
-    python3 tools/run_pipeline.py --duration 60
-```
 
 Not run. The question a profiler was wanted for -- how much of inference is
 prefill and how much is decode -- was answered above from three baselines at
@@ -536,10 +544,10 @@ Gate 2 section above.
 | duration | 599.5 s of steady state, 94 published records |
 | result age p50, first minute vs last | 6.4438 s -> 6.4659 s, **0.34%** |
 | clock throttling observed | none; p10 611 MHz against a 612 MHz ceiling |
-| memory at start vs end | 7069 MB used -> 7068 MB; swap 533 -> 533 MB |
-| mean / peak power | 15.51 W / 15.59 W from the rails; 15.7 / 17.2 W by tegrastats |
+| memory across the busy samples | 7069 MB used at the median, 7070 at p90; swap 533 and 535 MB |
+| median / peak power | 15.51 W / 15.59 W from the rails; 15.7 / 17.2 W by tegrastats |
 | health state transitions | none; `healthy` throughout |
-| tj | 62.9 C -> 63.0 C across the longest stretch: plateaued |
+| tj | 62.8 C median, 63.8 C highest; 62.9 C -> 63.0 C within the longest 48 s stretch |
 
 The two power figures differ because they measure different things:
 `telemetry_node` reads the INA3221 `VDD_IN` rail per published record, and
