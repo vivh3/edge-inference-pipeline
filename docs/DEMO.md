@@ -38,9 +38,16 @@ import.
 cd ~/edge-inference-pipeline && source env.sh
 mkdir -p results/demo
 export PS1='$ '
+export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
 cd /tmp && rm -rf demo-clone
 asciinema rec ~/edge-inference-pipeline/results/demo/core.cast --cols 120 --rows 36
 ```
+
+`PYTEST_DISABLE_PLUGIN_AUTOLOAD` is there because `env.sh` sources ROS, and
+ROS Humble ships a pytest plugin, `launch_testing`, written for an older hook
+signature than pytest 9 accepts. With it on the path pytest stops before
+collecting anything. The tests use no plugins, so turning autoload off costs
+nothing, and the command in the shot stays a plain `pytest -q`.
 
 `PS1` is reset because the recording captures the prompt, and the default one
 carries the username and hostname. asciinema starts a new shell, so set it
