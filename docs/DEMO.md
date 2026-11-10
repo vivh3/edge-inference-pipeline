@@ -211,7 +211,7 @@ What the frame contains, and what to caption:
 |---|---|
 | capture | `camera negotiated` at 30 fps, the rate the sensor offers |
 | inference | `policy_dropped` past 98%, `middleware_lost` reported **separately**, `health=healthy` |
-| telemetry | `result_age p50` flat near 6.4 s **while the drop rate climbs** |
+| telemetry | `result_age p50` flat **while the drop rate climbs**: 6.2 s in the committed take, 6.46 s on the richer scene of the sustained run |
 | consumer | `proceed` / `hold` following the scene |
 
 Caption: 183x overload, both losses named, result age held near one service
