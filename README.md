@@ -37,7 +37,7 @@ component that keeps up with its sensor produces no overload behaviour to engine
 | 1 | Jetson feasibility: model running, memory headroom, measured camera rate, baseline latency | **done** |
 | 2 | ROS 2 integration, performance budget, end-to-end on device | **done** |
 | 3 | Bottleneck root cause, sustained load | **done**; the one optional fix was deliberately not made |
-| 4 | Diagram, demo video, results, v0.1 | diagram, runbook and terminal recordings done; v0.1 tag open |
+| 4 | Diagram, demo video, results, v0.1 | **done**; tagged `v0.1` |
 
 No estimate is recorded as a measurement, and where a number was inferred rather than
 measured the page says which. The overload comparison below comes from a synthetic
