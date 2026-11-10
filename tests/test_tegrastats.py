@@ -296,3 +296,47 @@ def test_a_sustained_sag_is_still_throttling():
 def test_a_clock_pinned_throughout_says_so():
     message = tegrastats.clock_verdict([612.0] * 200)
     assert "held 612 MHz across all 200" in message
+
+
+# --------------------------------------------------------------------------
+# Across the whole run
+#
+# Drift is measured inside one stretch, and a pipeline that dips below the
+# busy threshold once per inference cycle is cut into dozens of them. The
+# sustained run's longest stretch was 48 samples of 600, and its drift table
+# was read as covering twelve minutes. Blocks group the busy samples by
+# elapsed time instead, so they do cover the run.
+# --------------------------------------------------------------------------
+
+
+def test_blocks_see_a_change_that_no_single_stretch_spans(tmp_path):
+    summary = summarize(
+        tmp_path,
+        [BUSY] * 4 + [IDLE] + [WARM] * 4,
+        ("--block-s", "5"),
+    )
+    # Two stretches of four, each too short for a drift comparison.
+    assert summary["drift"]["fields"] is None
+    rows = summary["blocks"]["rows"]
+    assert [row["samples"] for row in rows] == [2, 2]  # one trimmed from each end
+    assert rows[0]["tj_c"] == pytest.approx(58.312)
+    assert rows[1]["tj_c"] == pytest.approx(61.4)
+    assert rows[1]["start_s"] == 5.0
+
+
+def test_blocks_are_placed_by_time_not_by_position():
+    # Three samples, the last one 250 s after the first: it belongs in the
+    # third 120 s block, and the empty second block is not invented.
+    base = datetime(2026, 10, 8, 4, 30)
+    samples = [
+        tegrastats.parse_line(stamped(BUSY, (base + timedelta(seconds=t)).strftime("%m-%d-%Y %H:%M:%S")))
+        for t in (0, 1, 250)
+    ]
+    rows = tegrastats.blocks(samples, 120.0)
+    assert [(row["start_s"], row["samples"]) for row in rows] == [(0.0, 2), (240.0, 1)]
+
+
+def test_blocks_need_timestamps():
+    sample = dict(tegrastats.parse_line(BUSY))
+    sample.pop("ts")
+    assert tegrastats.blocks([sample], 120.0) == []

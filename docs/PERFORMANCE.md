@@ -356,10 +356,27 @@ The idle column describes weight loading, not an idle board: 115 of the run's
 median 88% summed with the GPU parked at 305 MHz and the module drawing 6 W. That is why
 "idle" CPU reads higher than busy CPU.
 
-Within the longest uninterrupted busy stretch, first ten samples against last
-ten. That stretch is 48 samples: the once-per-cycle dips below 50% split the
-run into 33 stretches, so this table shows that nothing moves inside a
-stretch and says nothing about the run from end to end.
+Across the run, the busy samples averaged in two-minute blocks
+(`blocks` in `results/sustained/tegrastats.json`):
+
+| from | samples | tj | GPU clock | RAM used | swap used | VDD_IN |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 s | 97 | 57.1 C | 610 MHz | 7043 MB | 526 MB | 15.6 W |
+| 120 s | 104 | 61.8 C | 611 MHz | 7068 MB | 533 MB | 15.8 W |
+| 240 s | 97 | 62.8 C | 611 MHz | 7068 MB | 533 MB | 15.8 W |
+| 360 s | 104 | 63.1 C | 611 MHz | 7069 MB | 533 MB | 15.8 W |
+| 480 s | 100 | 63.2 C | 611 MHz | 7069 MB | 533 MB | 15.8 W |
+| 600 s | 32 | 63.4 C | 611 MHz | 7069 MB | 533 MB | 15.9 W |
+
+The first block holds warmup, which is where the temperature, memory and swap
+are still arriving at their working values.
+
+An earlier version of this section made the end-to-end claim from the table
+below, which compares the first ten samples of the longest uninterrupted busy
+stretch with its last ten. That stretch is 48 samples. The once-per-cycle dips
+below 50% split the run into 33 stretches, so the comparison shows that
+nothing moves inside one and cannot show what happens across them. The tool
+now reports both.
 
 | quantity | first | last | delta |
 | --- | --- | --- | --- |
@@ -371,16 +388,15 @@ stretch and says nothing about the run from end to end.
 
 **Thermal throttling is ruled out, now over twelve minutes.** The clock's 10th
 percentile is 611 MHz against a 612 MHz high; one sample in 534 dipped to 509
-and the rest held. That is the whole-run evidence, and it is the clock rather
-than the temperature that answers the question. tj sits at 62.8 C at the
-median, 63.3 C at the 90th percentile and 63.8 C at its highest across the 534
-busy samples, against a part that throttles far higher. An earlier two-minute
-run showed tj still climbing at the end and this document said so, scoping the
-claim to that length.
+and the rest held, and every two-minute block averages 610 or 611 MHz. tj
+climbs 4.7 C in the first two minutes and 0.6 C over the last six. It has
+flattened but is still creeping, 0.1 to 0.2 C per block at the end, at
+63.4 C against a part that throttles far higher. An earlier two-minute run
+showed tj still climbing steeply at the end and this document said so, scoping
+the claim to that length.
 
-Memory is ruled out from the same distribution: RAM is 7069 MB at the median
-and 7070 at the 90th percentile, swap 533 and 535. The low ends of both ranges
-are the first samples after weight loading.
+Memory is ruled out on the same evidence: after the first block RAM moves
+under 2 MB in eight minutes and swap does not move at all.
 
 Host-to-device transfer and synchronisation stalls are ruled out: both show as
 GPU idle gaps aligned with CPU-side waits, and the GPU reads 90-100% in 550 of
@@ -399,6 +415,10 @@ GPU), and nothing separates them. The log says there is something there:
 - For a one-second window to average 51%, the non-GPU phase inside it must be
   at least 0.44 s. Against a 6.44 s cycle that is **roughly 7% of inference
   spent off the GPU**.
+
+(The arithmetic in that last step was off: 1 - 0.51 is 0.49 s, which is 7.6%.
+The figures are left as first written, because step 4 reports this estimate
+as the 7% that turned out wrong, and quotes the corrected 490 ms.)
 
 7% inferred from 1 Hz aliasing is a direction, not a measurement. Stamping
 either side of the processor call would measure it outright, costs two lines,
@@ -544,10 +564,10 @@ Gate 2 section above.
 | duration | 599.5 s of steady state, 94 published records |
 | result age p50, first minute vs last | 6.4438 s -> 6.4659 s, **0.34%** |
 | clock throttling observed | none; p10 611 MHz against a 612 MHz ceiling |
-| memory across the busy samples | 7069 MB used at the median, 7070 at p90; swap 533 and 535 MB |
+| memory, two-minute blocks after warmup | 7068 MB used -> 7069 MB; swap 533 -> 533 MB |
 | median / peak power | 15.51 W / 15.59 W from the rails; 15.7 / 17.2 W by tegrastats |
 | health state transitions | none; `healthy` throughout |
-| tj | 62.8 C median, 63.8 C highest; 62.9 C -> 63.0 C within the longest 48 s stretch |
+| tj, two-minute blocks | 61.8 C -> 63.4 C from the second block to the last; +0.3 C over the final four minutes |
 
 The two power figures differ because they measure different things:
 `telemetry_node` reads the INA3221 `VDD_IN` rail per published record, and
