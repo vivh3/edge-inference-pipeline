@@ -37,7 +37,7 @@ component that keeps up with its sensor produces no overload behaviour to engine
 | 1 | Jetson feasibility: model running, memory headroom, measured camera rate, baseline latency | **done** |
 | 2 | ROS 2 integration, performance budget, end-to-end on device | **done** |
 | 3 | Bottleneck root cause, sustained load | **done**; the one optional fix was deliberately not made |
-| 4 | Diagram, demo video, results, v0.1 | diagram and demo runbook done; recording open |
+| 4 | Diagram, demo video, results, v0.1 | diagram, runbook and terminal recordings done; v0.1 tag open |
 
 No estimate is recorded as a measurement, and where a number was inferred rather than
 measured the page says which. The overload comparison below comes from a synthetic
@@ -403,7 +403,8 @@ Output: `results/simulated/<policy>/{results.csv,summary.json}` and
 `comparison.json`.
 
 Jetson setup: [`docs/SETUP-jetson.md`](docs/SETUP-jetson.md).
-Demo runbook: [`docs/DEMO.md`](docs/DEMO.md).
+Demo runbook: [`docs/DEMO.md`](docs/DEMO.md). The recordings are in `results/demo/`;
+replay one with `asciinema play results/demo/graph.cast`.
 
 ---
 
@@ -436,7 +437,8 @@ ros2_ws/       four thin ROS 2 nodes over the core: capture, inference,
 tests/         the contract, the policies, the capture path, the failure paths
 docs/          ARCHITECTURE, SETUP-jetson, PERFORMANCE, DEMO
 results/       baseline/ (Gate 1), simulated/ (the policy comparison),
-               sustained/ (Gate 2), probe*/ (manifests only; the frames are
+               sustained/ (Gate 2), demo/ (terminal recordings of the demo),
+               probe*/ (manifests only; the frames are
                photographs of a real room and stay local)
 env.sh         one line of per-shell setup: venv, ROS, workspace, PYTHONPATH
 ```
