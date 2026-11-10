@@ -76,7 +76,7 @@ git clone --depth 1 https://github.com/vivh3/edge-inference-pipeline demo-clone
 cd demo-clone && python3 -m pytest -q
 ```
 
-Wait for `133 passed`. That is the shot: no accelerator, no ROS, no model
+Wait for the `passed` line, 133 in the committed recording. That is the shot: no accelerator, no ROS, no model
 download. Do not scroll.
 
 **3.** Shot 2 — type this and let it finish (about 4 min; speed it up in the

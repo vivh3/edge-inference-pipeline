@@ -180,6 +180,44 @@ def drift(
     return out
 
 
+def blocks(
+    busy: List[Dict[str, float]], block_s: float
+) -> List[Dict[str, float]]:
+    """Mean of each field over consecutive blocks of time, busy samples only.
+
+    `drift` looks inside one stretch, and a stretch ends at every dip below
+    the busy threshold. A pipeline that dips once per inference cycle is cut
+    into dozens of short stretches, so the longest one covers under a minute
+    of a ten-minute run and says nothing about the run from end to end. This
+    does: the busy samples are grouped by elapsed time, so a quantity that
+    climbs across the whole run shows as a column of rising means.
+
+    The first block usually holds warmup, which is why it is reported rather
+    than hidden.
+    """
+    if not busy or "ts" not in busy[0]:
+        return []
+    start = busy[0]["ts"]
+    grouped: Dict[int, List[Dict[str, float]]] = {}
+    for sample in busy:
+        grouped.setdefault(int((sample["ts"] - start) // block_s), []).append(sample)
+    out = []
+    for index in sorted(grouped):
+        rows = grouped[index]
+        entry: Dict[str, float] = {"start_s": index * block_s, "samples": len(rows)}
+        for field, _, _, _ in FIELDS:
+            values = [row[field] for row in rows if field in row]
+            if values:
+                entry[field] = sum(values) / len(values)
+        out.append(entry)
+    return out
+
+
+# The quantities worth watching across a run, for the printed table. The JSON
+# carries every field.
+BLOCK_COLUMNS = ("tj_c", "gpu_mhz", "ram_used_mb", "swap_used_mb", "vdd_in_w")
+
+
 # A clock this close to the ceiling is the sampling interval, not the governor.
 _AT_CEILING = 0.98
 # The floor is read at this percentile rather than at the minimum. One sample
@@ -287,6 +325,13 @@ def main() -> int:
         help="samples at each end of the longest busy stretch to compare, for "
         "whether the run had settled (default 10)",
     )
+    p.add_argument(
+        "--block-s",
+        type=float,
+        default=120.0,
+        help="length in seconds of the blocks the busy samples are averaged "
+        "over, for how a quantity moved across the whole run (default 120)",
+    )
     p.add_argument("--out", help="write the summary as JSON")
     args = p.parse_args()
 
@@ -354,6 +399,9 @@ def main() -> int:
         "fields": moved,
     }
 
+    across = blocks(busy, args.block_s)
+    summary["blocks"] = {"block_s": args.block_s, "rows": across}
+
     print(f"{len(samples)} samples at 1 Hz: {untrimmed} busy, {len(idle)} idle")
     print(f"(busy means GPU utilisation above {args.busy_above:.0f}%)")
     print(
@@ -396,6 +444,23 @@ def main() -> int:
             f"\nlongest stretch is {len(longest_trimmed)} samples, too short for a "
             f"first-{args.drift_window} against last-{args.drift_window} comparison"
         )
+
+    if len(across) > 1:
+        labels = {field: (label, digits) for field, label, _, digits in FIELDS}
+        print(
+            f"\nacross the run, busy samples in {args.block_s:.0f} s blocks "
+            "(the first usually holds warmup):\n"
+        )
+        print(
+            f"{'from (s)':>9}{'samples':>9}"
+            + "".join(f"{labels[f][0]:>22}" for f in BLOCK_COLUMNS)
+        )
+        for row in across:
+            cells = "".join(
+                f"{row[f]:>22.{max(labels[f][1], 1)}f}" if f in row else f"{'-':>22}"
+                for f in BLOCK_COLUMNS
+            )
+            print(f"{row['start_s']:>9.0f}{row['samples']:>9}{cells}")
 
     print()
     print(clock_verdict([s["gpu_mhz"] for s in busy]))
