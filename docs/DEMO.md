@@ -61,8 +61,8 @@ the default prompt back, so the first line typed in the recording is:
 export PS1='$ ' && clear
 ```
 
-`clear` only hides the old prompt on screen. The cast still holds it, so the
-committed `core.cast` was trimmed to start at the `clear` and to end 4 s after
+`clear` hides the old prompt on screen but the cast still holds it, so the
+committed `core.cast` was trimmed to start at the `clear` and end 4 s after
 the table. Check any cast before committing it:
 
 ```bash
@@ -93,10 +93,10 @@ looks like an unbounded one. A 30 s run prints 18 s for `fifo_bounded` and the
 caption below would not match the screen.
 
 **4.** When the table prints, wait 4 s on it, then stop with `Ctrl-D`. Wait
-for `asciinema: recording finished`. Until that line appears everything typed
-is still going into the cast.
+for `asciinema: recording finished`; until then everything typed still goes
+into the cast.
 
-Do not touch the keyboard while the simulation runs. Stray keys are recorded.
+Leave the keyboard alone while the simulation runs. Stray keys are recorded.
 
 **What to caption in the edit.** Not the drop rate — both policies drop ~99%.
 The line is: `latest` answers in 6.1 s and `fifo_bounded` in 55 s while
@@ -117,8 +117,7 @@ watching the pipeline while you move the camera, and is never recorded.
 
 ### Before recording: start the graph
 
-**1.** Start five stacked panes and the four nodes. Run this from a plain
-shell, not from inside tmux:
+**1.** Start five stacked panes and the four nodes. Run this outside tmux:
 
 ```bash
 cd ~/edge-inference-pipeline
@@ -140,17 +139,17 @@ stacked full width because the report lines are about 150 characters long.
 `out_dir` on the telemetry node is not optional. Its default is
 `results/sustained`, and a demo run would overwrite the committed Gate 2 data.
 
-The stale limit is 13.5 s, not something shorter, because of how old a record
-gets in normal operation. It arrives 6.5 s old and the next one lands 6.45 s
+The stale limit is 13.5 s because of how old a record gets in normal
+operation. It arrives 6.5 s old and the next one lands 6.45 s
 later, so every record reaches about 12.9 s before it is replaced. Any limit
 below that puts the consumer in `hold` for part of every cycle with the
 pipeline healthy, and the scene-driven transition in shot 3 disappears under
 it.
 
 `ros2 topic list` in the spare pane starts the ROS command-line daemon. The
-first `ros2` command in a session can run before the daemon has discovered
-the topics and print `does not appear to be published yet`, which is not
-something to find out during shot 4.
+first `ros2` command in a session can run before the daemon has found the
+topics, and then prints `does not appear to be published yet`. Running one
+beforehand keeps that out of shot 4.
 
 **2.** Watch the answers arrive, in the second terminal:
 
@@ -181,15 +180,14 @@ tmux send-keys -t demo.4 "ros2 topic echo /perception --once --full-length"
 tmux select-pane -t demo.4
 ```
 
-`--full-length` matters. Without it `ros2 topic echo` cuts the record off
-before the `validation` block, which is the part the shot is for.
+Without `--full-length`, `ros2 topic echo` cuts the record off before the
+`validation` block, which is the part the shot is for.
 
 ### Now record
 
 Every answer lands 7 to 13 s after the camera moves: the inference in flight
-has to finish, then the next one runs. Move the camera, then keep still and
-wait for the line in the second terminal or in the consumer pane. Moving again
-before it lands is what makes a take unreadable.
+has to finish, then the next one runs. Move the camera, keep still, and wait
+for the line in the second terminal or the consumer pane before moving again.
 
 **5.** Start the recording, in the first terminal:
 
@@ -197,8 +195,8 @@ before it lands is what makes a take unreadable.
 asciinema rec -c "tmux attach -t demo" ~/edge-inference-pipeline/results/demo/graph.cast
 ```
 
-Recording the attach directly keeps the shell prompt out of the cast and ends
-the recording on detach.
+Recording the attach keeps the shell prompt out of the cast, and the recording
+ends when you detach.
 
 **6. Shot 3.** Do not type. Wait for a new `records=` line in the telemetry
 pane, which reports every 30 s. Then turn the camera to the blocked position,
@@ -256,9 +254,9 @@ last record already was.
 The consumer aged out its own last record. One that re-evaluated only on
 arrival would still be reporting `proceed`.
 
-The engine is killed with a visible command, not `Ctrl-C` in its pane.
-Interrupting it mid-inference ends in a traceback and `Aborted (core dumped)`,
-which reads as a fault when it was the point of the shot.
+Use the kill command. `Ctrl-C` in the inference pane interrupts it
+mid-inference and ends in a traceback and `Aborted (core dumped)`, which looks
+like a crash.
 
 Caption that the limits are 13.5 s and 20 s for the shot; the defaults are
 13 s and 30 s. Thirty seconds of dead air does not belong in a ninety-second
