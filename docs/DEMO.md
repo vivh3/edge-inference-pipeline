@@ -40,8 +40,12 @@ mkdir -p results/demo
 export PS1='$ '
 export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
 cd /tmp && rm -rf demo-clone
-asciinema rec ~/edge-inference-pipeline/results/demo/core.cast --cols 120 --rows 36
+tput cols; tput lines      # want at least 120 and 36; resize the window if not
+asciinema rec ~/edge-inference-pipeline/results/demo/core.cast
 ```
+
+The recording takes the size of the terminal it starts in. apt's asciinema on
+JetPack is 2.1.0, which has no `--cols` or `--rows`, so size the window first.
 
 `PYTEST_DISABLE_PLUGIN_AUTOLOAD` is there because `env.sh` sources ROS, and
 ROS Humble ships a pytest plugin, `launch_testing`, written for an older hook
@@ -172,7 +176,8 @@ Ctrl-B d
 **7.** Start the recording and attach straight back:
 
 ```bash
-asciinema rec ~/edge-inference-pipeline/results/demo/graph.cast --cols 160 --rows 48
+tput cols; tput lines      # want at least 160 and 48 for five panes
+asciinema rec ~/edge-inference-pipeline/results/demo/graph.cast
 tmux attach -t demo
 ```
 
