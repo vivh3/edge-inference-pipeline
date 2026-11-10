@@ -54,8 +54,20 @@ collecting anything. The tests use no plugins, so turning autoload off costs
 nothing, and the command in the shot stays a plain `pytest -q`.
 
 `PS1` is reset because the recording captures the prompt, and the default one
-carries the username and hostname. asciinema starts a new shell, so set it
-again as the first line of the recording if the prompt comes back.
+carries the username and hostname. asciinema starts a new shell that brings
+the default prompt back, so the first line typed in the recording is:
+
+```bash
+export PS1='$ ' && clear
+```
+
+`clear` only hides the old prompt on screen. The cast still holds it, so the
+committed `core.cast` was trimmed to start at the `clear` and to end 4 s after
+the table. Check any cast before committing it:
+
+```bash
+grep -c "$USER@" ~/edge-inference-pipeline/results/demo/core.cast    # want 0
+```
 
 **2.** Shot 1 — type this and let it finish (about 12 s):
 
@@ -80,11 +92,11 @@ nine service times, 55 s, to fill, and until it has filled a bounded FIFO
 looks like an unbounded one. A 30 s run prints 18 s for `fifo_bounded` and the
 caption below would not match the screen.
 
-**4.** When the table prints, wait 4 s on it, then stop:
+**4.** When the table prints, wait 4 s on it, then stop with `Ctrl-D`. Wait
+for `asciinema: recording finished`. Until that line appears everything typed
+is still going into the cast.
 
-```
-Ctrl-D
-```
+Do not touch the keyboard while the simulation runs. Stray keys are recorded.
 
 **What to caption in the edit.** Not the drop rate — both policies drop ~99%.
 The line is: `latest` answers in 6.1 s and `fifo_bounded` in 55 s while
@@ -100,54 +112,30 @@ policies. Quote the figures the recording shows; the README's 54.798 s is the
 On the Jetson. The model takes ~100 s to load, so **warm the graph first and
 record an attach**. Nothing in the recording waits for a load.
 
+Open two terminals on the board. One will be recorded. The other is for
+watching the pipeline while you move the camera, and is never recorded.
+
 ### Before recording: start the graph
 
-**1.** Find two camera positions before starting: one the model reads as
-`clear` (open floor) and one it reads as `blocked`. Start on the clear one.
-Not a blank surface yet; that is shot 4.
-
-**2.** Build the five-pane layout:
+**1.** Start five stacked panes and the four nodes. Run this from a plain
+shell, not from inside tmux:
 
 ```bash
-tmux new -s demo
+cd ~/edge-inference-pipeline
+tput cols; tput lines      # want at least 160 and 48
+R='cd ~/edge-inference-pipeline && source env.sh && export PS1="$ " && clear && cd ros2_ws'
+tmux new-session -d -s demo
+for i in 1 2 3 4; do tmux split-window -t demo; tmux select-layout -t demo even-vertical; done
+tmux send-keys -t demo.0 "$R && python3 -m edge_perception.telemetry_node --ros-args -p out_dir:=$HOME/edge-inference-pipeline/results/demo" Enter
+tmux send-keys -t demo.1 "$R && python3 -m edge_perception.capture_node" Enter
+tmux send-keys -t demo.2 "$R && python3 -m edge_perception.inference_node --ros-args -p use_mock_engine:=false" Enter
+tmux send-keys -t demo.3 "$R && python3 -m edge_perception.consumer_node --ros-args -p stale_after_s:=13.5 -p no_data_after_s:=20.0" Enter
+tmux send-keys -t demo.4 "$R && ros2 topic list > /dev/null; clear" Enter
 ```
 
-Then, inside tmux:
-
-| keys | does |
-|---|---|
-| `Ctrl-B` `"` | split the current pane top/bottom |
-| `Ctrl-B` `%` | split the current pane left/right |
-| `Ctrl-B` `o` | move to the next pane |
-| `Ctrl-B` `z` | zoom the current pane full screen (again to unzoom) |
-
-Press `Ctrl-B "` then `Ctrl-B %`, then `Ctrl-B o` and `Ctrl-B %` again until
-you have five panes. Exact arrangement does not matter; all five visible does.
-
-**3.** In each pane, first:
-
-```bash
-cd ~/edge-inference-pipeline && source env.sh && export PS1='$ '
-```
-
-**4.** Start the four nodes, one per pane, in this order:
-
-```bash
-# pane 1 — telemetry
-cd ros2_ws && python3 -m edge_perception.telemetry_node --ros-args     -p out_dir:=$HOME/edge-inference-pipeline/results/demo
-```
-```bash
-# pane 2 — capture
-cd ros2_ws && python3 -m edge_perception.capture_node
-```
-```bash
-# pane 3 — inference
-cd ros2_ws && python3 -m edge_perception.inference_node --ros-args -p use_mock_engine:=false
-```
-```bash
-# pane 4 — consumer, with the no-data limit shortened so shot 5 fits the video
-cd ros2_ws && python3 -m edge_perception.consumer_node --ros-args     -p stale_after_s:=13.5 -p no_data_after_s:=20.0
-```
+Top to bottom: telemetry (0), capture (1), inference (2), consumer (3), and a
+spare (4) for the two commands typed during the recording. The panes are
+stacked full width because the report lines are about 150 characters long.
 
 `out_dir` on the telemetry node is not optional. Its default is
 `results/sustained`, and a demo run would overwrite the committed Gate 2 data.
@@ -159,33 +147,63 @@ below that puts the consumer in `hold` for part of every cycle with the
 pipeline healthy, and the scene-driven transition in shot 3 disappears under
 it.
 
-Leave **pane 5** empty. It is for the one command in shot 4.
+`ros2 topic list` in the spare pane starts the ROS command-line daemon. The
+first `ros2` command in a session can run before the daemon has discovered
+the topics and print `does not appear to be published yet`, which is not
+something to find out during shot 4.
 
-**5.** Wait for pane 1 to print a `records=` line (~100 s for the model load,
-then up to 30 s for the next report), and for pane 4 to print `-> proceed`.
-Do not start recording before both.
+**2.** Watch the answers arrive, in the second terminal:
 
-**6.** Detach:
-
+```bash
+tail -f ~/edge-inference-pipeline/results/demo/results.csv | cut -d, -f2,16,17,20,21
 ```
-Ctrl-B d
+
+One line per result: time, valid, failure kind, `path_status`,
+`obstacle_location`. Nothing prints until the model has loaded.
+
+**3.** Find three camera positions and remember them:
+
+| position | reads as | what worked here |
+|---|---|---|
+| clear | `True,none,clear,none` | open floor, nothing near the frame edges |
+| blocked | `True,none,blocked,<where>` | a view with an object at one side |
+| unusable | `False,unusable_semantics` | camera face down on the desk |
+
+Hold each view for three lines before judging it. The first line after a move
+usually describes the old view. An object held close to the lens does not read
+as an obstacle; the model called that `clear`.
+
+**4.** Leave the camera on clear, wait for the consumer to report `proceed`,
+and type the shot 4 command into the spare pane without running it:
+
+```bash
+tmux send-keys -t demo.4 "ros2 topic echo /perception --once --full-length"
+tmux select-pane -t demo.4
 ```
+
+`--full-length` matters. Without it `ros2 topic echo` cuts the record off
+before the `validation` block, which is the part the shot is for.
 
 ### Now record
 
-**7.** Start the recording and attach straight back:
+Every answer lands 7 to 13 s after the camera moves: the inference in flight
+has to finish, then the next one runs. Move the camera, then keep still and
+wait for the line in the second terminal or in the consumer pane. Moving again
+before it lands is what makes a take unreadable.
+
+**5.** Start the recording, in the first terminal:
 
 ```bash
-tput cols; tput lines      # want at least 160 and 48 for five panes
-asciinema rec ~/edge-inference-pipeline/results/demo/graph.cast
-tmux attach -t demo
+asciinema rec -c "tmux attach -t demo" ~/edge-inference-pipeline/results/demo/graph.cast
 ```
 
-**8. Shot 3 — about 35 s.** Do not type. The panes already hold report lines
-from the warm-up; inference adds one every 10 s and telemetry one every 30 s,
-so wait for a new telemetry line. Then move the camera to the blocked
-position, wait for pane 4 to print `proceed -> hold` (up to two cycles, 13 s),
-and move it back.
+Recording the attach directly keeps the shell prompt out of the cast and ends
+the recording on detach.
+
+**6. Shot 3.** Do not type. Wait for a new `records=` line in the telemetry
+pane, which reports every 30 s. Then turn the camera to the blocked position,
+wait for `proceed -> hold` in the consumer pane, turn it back, and wait for
+`hold -> proceed`.
 
 What the frame contains, and what to caption:
 
@@ -193,60 +211,66 @@ What the frame contains, and what to caption:
 |---|---|
 | capture | `camera negotiated` at 30 fps, the rate the sensor offers |
 | inference | `policy_dropped` past 98%, `middleware_lost` reported **separately**, `health=healthy` |
-| telemetry | `result_age p50` flat near 6.46 s **while the drop rate climbs** |
+| telemetry | `result_age p50` flat near 6.4 s **while the drop rate climbs** |
 | consumer | `proceed` / `hold` following the scene |
 
 Caption: 183x overload, both losses named, result age held near one service
 time. That is the responsiveness claim, visible.
 
-**9. Shot 4 — turn the camera to face a blank surface** (a desk, a wall).
-Wait ~15 s, which is two inference cycles, then in pane 5:
+**7. Shot 4.** Lay the camera face down. Wait for two
+`False,unusable_semantics` lines in the second terminal, then press `Enter` in
+the recorded window. The spare pane prints the next record in full:
 
-```bash
-ros2 topic echo /perception --once
+```
+"semantic": {"path_status": "unknown", "obstacle_location": "unknown"},
+"validation": {"ok": false, "failure": "unusable_semantics", ...}
 ```
 
-Zoom it with `Ctrl-B z` while it is on screen, then `Ctrl-B z` again.
-
-Look for `"path_status": "unknown"`, `"obstacle_location": "unknown"`, and a
-`validation` block naming `unusable_semantics`. The model emitted something
-self-contradictory and the system published an explicit unknown rather than
-passing it on.
+and the consumer pane shows `proceed -> hold: semantics unusable`. The model
+emitted something self-contradictory and the system published an explicit
+unknown, named the cause, and kept the trusted `frame_id` and timestamps
+beside it.
 
 Caption: 10% of varied frames do this. **This is the shot most demos skip.**
 
-**10. Shot 5 — point the camera back at the clear position and wait for pane
-4 to print `-> proceed`.** Shot 4 left the consumer in `hold`, and from there
-only the second line below would print. Then go to pane 3 and `Ctrl-C` only
-`inference_node`, watch pane 4, and do not touch anything for ~20 s.
+**8. Shot 5.** Point the camera back at clear and wait for `-> proceed`. Then
+type this in the spare pane, press `Enter`, and do not touch anything for
+~20 s:
 
-It prints, with nothing arriving to cause either line:
+```bash
+pkill -9 -f edge_perception.inference_node
+```
+
+The inference pane prints `Killed`, and the consumer pane prints, with nothing
+arriving to cause either line:
 
 ```
 proceed -> hold: last result 13.6s old, not a current view
 hold -> no_data: last result 20.1s old, past the 20s limit
 ```
 
-The ages land within a tick of the limits, 13.5 to 13.6 and 20.0 to 20.1,
-because the consumer decides at 10 Hz. The first line comes 1 to 7 s after the
-kill, depending on how old the last record already was.
+The ages land within a tick of the limits because the consumer decides at
+10 Hz. The first line comes 1 to 7 s after the kill, depending on how old the
+last record already was.
 
 The consumer aged out its own last record. One that re-evaluated only on
 arrival would still be reporting `proceed`.
 
-If no camera position reads `clear`, record it anyway: `hold -> no_data` alone
-still shows a state change with nothing arriving.
+The engine is killed with a visible command, not `Ctrl-C` in its pane.
+Interrupting it mid-inference ends in a traceback and `Aborted (core dumped)`,
+which reads as a fault when it was the point of the shot.
 
 Caption that the limits are 13.5 s and 20 s for the shot; the defaults are
 13 s and 30 s. Thirty seconds of dead air does not belong in a ninety-second
 video, and neither does implying the defaults were recorded.
 
-**11.** Stop:
+**9.** Stop by detaching. The recording ends with it:
 
 ```
 Ctrl-B d
-Ctrl-D
 ```
+
+Then `tmux kill-session -t demo` stops the nodes.
 
 ---
 
@@ -285,10 +309,10 @@ A gif is for the video edit and the README, and is the one other file type
 
 ### If a shot goes wrong
 
-Shots 1 and 4 are repeatable immediately, and shot 2 costs four minutes. Shot 5 kills the engine, so
-redoing it costs another ~100 s model load — do it last, and if you need a
-second take, restart pane 3 and wait for pane 1 to report again before
-recording.
+Shots 1 and 4 are repeatable immediately, and shot 2 costs four minutes. Shot
+5 kills the engine, so redoing it costs another ~100 s model load. For a
+second take, rerun the inference line in pane 2, wait for the telemetry pane
+to report again, and add `--overwrite` to `asciinema rec`.
 
 ---
 
