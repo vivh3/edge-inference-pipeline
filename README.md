@@ -20,10 +20,12 @@ a two-week personal project in Python and ROS 2, tagged `v0.1`.
 ## What it does
 
 - **Serves the newest frame and drops the rest.** A camera cannot be slowed
-  down, so the only choice is which frames to take. An old answer is worse than
+  down, so this is admission control, not backpressure: the only choice is
+  which frames to take. An old answer is worse than
   none, because nothing in "path clear" says how old the view was.
 - **Stamps every answer with metadata the model never touches.** A frame id and
-  four timestamps, all from one monotonic clock.
+  four timestamps, all from one monotonic clock. Confidence is refused: a model
+  that says "high" has produced a word, not a probability.
 - **Names every failure.** Six kinds: `malformed_json`, `schema_violation`,
   `unusable_semantics`, `inference_timeout`, `engine_error`, `pipeline_error`.
   Each is published as an explicit `unknown` with its cause. Nothing is retried.
@@ -32,7 +34,23 @@ a two-week personal project in Python and ROS 2, tagged `v0.1`.
 - **Checks age before meaning.** The consumer falls back on a timer when its
   newest answer gets too old, even if nothing new has arrived.
 
+A real record, from the demo run. The model contradicted itself, so the
+meaning is `unknown`, the cause is named, and the frame id and times are intact:
+
+```json
+{
+  "frame_id": 7625,
+  "capture_ts": 52621.484, "inference_start_ts": 52621.519,
+  "inference_end_ts": 52627.405, "publish_ts": 52627.406,
+  "semantic": { "path_status": "unknown", "obstacle_location": "unknown" },
+  "validation": { "ok": false, "failure": "unusable_semantics" }
+}
+```
+
 ## Results
+
+**Result age** is the headline metric: the time from capturing a frame to
+publishing its answer. It is what a consumer experiences.
 
 Three admission policies under the same overload, 240 s each:
 
@@ -46,7 +64,8 @@ Three admission policies under the same overload, 240 s each:
 the 6.09 s measured on the board. `latest` and the bounded queue drop the same
 99% of frames and publish the same number of answers. One answer is 6 s old
 and the other is 55 s. Both ages were predicted on paper before the run:
-6.117 s and 54.76 s.
+6.117 s and 54.76 s. Every captured frame is accounted for exactly, and no p99
+is quoted, because below 100 samples a p99 is just the maximum.
 
 ```bash
 python3 tools/run_overload_sim.py --duration 240 --latency 6.09 --sigma 0.02 --deadline 15
@@ -63,6 +82,11 @@ Measured on the Jetson over ten minutes, 94 answers:
 | frames dropped by the policy | 99.4% of those that arrived | |
 | frames lost in the middleware | 9.3%, counted separately | |
 | pipeline overhead | 12 ms per 6.4 s cycle | |
+
+The targets are a budget, not an SLO: they come from what the board was
+measured doing, not from a requirement. Scene content moves latency too. The
+model took 6.09 s on a sparse frame and 6.36 s on a rich one, because a richer
+scene gets a longer answer.
 
 Where the six seconds go, from three baselines and no profiler:
 
