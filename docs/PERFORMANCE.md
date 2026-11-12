@@ -155,14 +155,44 @@ baselines at different output lengths.
 
 ## Overload behaviour
 
-Full comparison in the README. Run on hardware with:
+The comparison table is in the README. It lives there only, so there is one
+copy for CI to check against `results/simulated/`
+(`tools/check_readme_matches_results.py`). Reproduce it with:
 
 ```bash
-python3 tools/run_overload_sim.py --policies latest fifo_bounded fifo_unbounded
+python3 tools/run_overload_sim.py --duration 240 --latency 6.09 --sigma 0.02 --deadline 15
 ```
 
-The table lives in the README only, so there is one copy for CI to check
-against `results/simulated/` (`tools/check_readme_matches_results.py`).
+No p99: 39 published results make nearest-rank p99 the maximum, which would name the
+single slowest result a tail statistic. Under this much overload a run publishes few
+results by design, so p90 and max are what the data supports.
+
+The simulation paces itself with real sleeps, so it is not bit-reproducible. Rerunning
+it moves these figures by a millisecond or so, which is why the table and the committed
+summaries are regenerated together and checked against each other in CI.
+
+Every captured frame is accounted for: `dropped + published + still queued at stop`
+equals `captured` exactly, for all three policies. The summaries carry the queue depth
+at stop so you can check it.
+
+**The bound was derived before it was measured.** `fifo_bounded(8)` saturates near
+`(capacity + 1) x service time` — a frame admitted to a full queue waits behind eight
+others, then pays for its own inference. That predicts 9 x 6.084 = 54.76 s against a
+measured 54.798 s p50. Under `latest`, result age sits at one service time plus one
+inter-frame interval: 6.117 s predicted, 6.123 s measured. Under `fifo_unbounded` it
+grows for as long as the run continues: 40 results served back to back at 6.084 s each
+is 243 s of service, and the 243.046 s maximum is the oldest surviving frame carrying
+the whole life of the run.
+
+**Precision about the claim.** "Result age grows without bound" holds only for the
+*unbounded* FIFO. A bounded FIFO fills and starts dropping, so its age is capped by
+capacity. The unbounded case is a deliberately pathological baseline, labelled as
+one, so the claim attaches to the configuration where it is literally true.
+
+The real comparison is the bounded one, and at this overload ratio it is stark: both
+policies drop ~99% of frames and publish about the same number of results, yet one
+answers in 6.1 s and the other in 54.8 s. Dropping is not what separates them.
+**Which** frames survive is.
 
 ## Gate 2 end to end
 
