@@ -9,6 +9,8 @@ factor of 183, and that is its normal operating condition. This project is
 about what it does in that condition: which frames it serves, how old the answer is
 when it arrives, and what it tells the consumer when something goes wrong.
 
+https://github.com/user-attachments/assets/32bd4b1f-f9e8-415e-b143-26a3918eb061
+
 Deliverables are defensible overload semantics, explicit failure handling, and one
 root-caused bottleneck investigation. It is not a benchmarking project.
 
