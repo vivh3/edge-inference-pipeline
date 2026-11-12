@@ -83,24 +83,30 @@ baseline tool, which fed the model a 640x480 image while the pipeline fed it
 [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) has the method and the other
 wrong turns.
 
-## How it works
+## Architecture
 
-```
-camera, 30 fps
-  -> capture       stamps frame id and capture time     trusted
-  -> admission     one slot, newest wins                drops 99.4%
-  -> preprocess    448x448
-  -> model         SmolVLM2 2.2B, about 6.4 s           untrusted
-  -> validation    six failure kinds, no retries
-  -> metadata      frame id and four timestamps         trusted
-  -> JSON record
-  -> consumer      proceed / hold / no_data at 10 Hz, nothing actuated
+```mermaid
+flowchart LR
+    cam["USB webcam<br/>30 fps"]
+    cap["capture_node<br/>stamps frame id<br/>+ capture time<br/>(trusted)"]
+    inf["inference_node<br/>newest frame wins<br/>model, about 6.4 s (untrusted)<br/>validation, six failure kinds<br/>attaches metadata (trusted)"]
+    tel["telemetry_node<br/>CSV + summary"]
+    con["consumer_node<br/>proceed / hold / no_data<br/>at 10 Hz, nothing actuated"]
+    mw(["lost in the middleware<br/>9.3% of frames"])
+    pol(["dropped by the policy<br/>99.4% of arrivals"])
+
+    cam --> cap
+    cap -->|"/frames<br/>best-effort, depth 1"| inf
+    inf -->|"/perception<br/>reliable, depth 100"| tel
+    inf -->|"/perception"| con
+    cap -.-> mw
+    inf -.-> pol
 ```
 
-On the board this is four ROS 2 nodes. `/frames` is best-effort with a depth of
-one, because losing a stale frame is the design. `/perception` is reliable with
-a depth of 100, because a lost answer would skew the statistics.
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) covers the rest.
+Four ROS 2 nodes over a plain-Python core. `/frames` is best-effort because
+losing a stale frame is the design. `/perception` is reliable because a lost
+answer would skew the statistics. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+covers the rest.
 
 ## Run it
 
