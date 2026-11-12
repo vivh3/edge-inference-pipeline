@@ -2,16 +2,20 @@
 
 A perception pipeline built around a model that is **slower than its own camera**.
 
-The camera gives 30 frames a second. A vision-language model on an 8 GB Jetson
-takes about six seconds for one. That is a 183x overload, all the time. This
+The camera gives 30 frames a second. A vision-language model (SmolVLM2 2.2B) on
+an 8 GB Jetson Orin Nano Super takes about six seconds for one. That is a 183x overload, all the time. This
 project is about what the system does in that state: which frames it serves,
 how old each answer is, and what it reports when the model gets it wrong.
 
 https://github.com/user-attachments/assets/32bd4b1f-f9e8-415e-b143-26a3918eb061
 
+Top: the live camera. Each line below it is one answer. `if queued (calc.)` is
+arithmetic on the real publish times, not a second pipeline.
+
 The model is slow on purpose. A small detector would be better at spotting
 obstacles, and this does not propose a VLM for that job. It stands in for any
-expensive step a robot runs now and then. This is also not a benchmark.
+expensive step a robot runs now and then. This is also not a benchmark. It is
+a two-week personal project in Python and ROS 2, tagged `v0.1`.
 
 ## What it does
 
@@ -20,8 +24,9 @@ expensive step a robot runs now and then. This is also not a benchmark.
   none, because nothing in "path clear" says how old the view was.
 - **Stamps every answer with metadata the model never touches.** A frame id and
   four timestamps, all from one monotonic clock.
-- **Names every failure.** Six kinds. Each is published as an explicit
-  `unknown` with its cause. Nothing is retried.
+- **Names every failure.** Six kinds: `malformed_json`, `schema_violation`,
+  `unusable_semantics`, `inference_timeout`, `engine_error`, `pipeline_error`.
+  Each is published as an explicit `unknown` with its cause. Nothing is retried.
 - **Counts two kinds of loss apart.** Frames the middleware lost, and frames
   the policy dropped on purpose.
 - **Checks age before meaning.** The consumer falls back on a timer when its
@@ -40,7 +45,8 @@ Three admission policies under the same overload, 240 s each:
 `SIMULATED`. The policies are the real code. The engine is a stand-in set to
 the 6.09 s measured on the board. `latest` and the bounded queue drop the same
 99% of frames and publish the same number of answers. One answer is 6 s old
-and the other is 55 s.
+and the other is 55 s. Both ages were predicted on paper before the run:
+6.117 s and 54.76 s.
 
 ```bash
 python3 tools/run_overload_sim.py --duration 240 --latency 6.09 --sigma 0.02 --deadline 15
@@ -54,6 +60,8 @@ Measured on the Jetson over ten minutes, 94 answers:
 | result age p90 | 6.485 s | 6.6 s |
 | drift, first minute to last | 0.34% | 10% |
 | invalid output | 10% of ten varied frames | 35% |
+| frames dropped by the policy | 99.4% of those that arrived | |
+| frames lost in the middleware | 9.3%, counted separately | |
 | pipeline overhead | 12 ms per 6.4 s cycle | |
 
 Where the six seconds go, from three baselines and no profiler:
@@ -65,8 +73,15 @@ Where the six seconds go, from three baselines and no profiler:
 | decode, GPU | 2.002 s | 31.5% |
 
 The prediction that prefill dominates was written down first, and it held.
-Nothing was optimised. [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) has the
-method, the wrong turns, and the reason.
+Nothing was optimised, because every fix for prefill changes what the model
+sees and would undo the fixed settings the other numbers rest on.
+
+The most useful bug: the pipeline looked 25% slower than the standalone
+baseline. Three hypotheses were tested and ruled out. The cause was the
+baseline tool, which fed the model a 640x480 image while the pipeline fed it
+448x448. Measured the same way, the gap is 0.8%.
+[`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) has the method and the other
+wrong turns.
 
 ## How it works
 
