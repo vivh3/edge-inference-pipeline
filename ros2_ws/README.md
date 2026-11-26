@@ -1,5 +1,9 @@
 # ROS 2 workspace (Gate 2)
 
+Gate 2 is the project milestone for ROS 2 integration and the first end-to-end
+run on the board. Gate 1, mentioned below, was the baseline measurement on
+hardware.
+
 Four nodes, built and run end to end on the Jetson. Scoped, so it does not
 quietly grow. The sections below are kept in the order the work happened:
 what was measured before the layout was designed, the QoS decision, and what

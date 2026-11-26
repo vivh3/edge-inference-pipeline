@@ -289,6 +289,9 @@ tools/       experiments and plotting
 ros2_ws/     integration plumbing (Gate 2), a thin wrapper over the above
 ```
 
+Gate 2 is the project milestone for ROS 2 integration and the first end-to-end
+run on the board.
+
 Nothing in `inference/` or `telemetry/` imports ROS, CUDA or a camera driver
 at module scope. That is load-bearing: it lets the admission policy, the
 output contract, the failure taxonomy and the telemetry be built and tested on

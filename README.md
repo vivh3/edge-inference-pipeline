@@ -172,7 +172,7 @@ numbers on this page drift from the files in `results/`.
 | inference runtime | PyTorch 2.8.0, transformers 5.18.0 |
 | baseline inference latency | 6088 ms p50, 6119 ms max (15W, float16) |
 | overload ratio, measured | 183x against a 33.3 ms frame period |
-| ROS 2 | Humble (Gate 2) |
+| ROS 2 | Humble (Gate 2: ROS 2 integration on the board) |
 | power profile | `nvpmodel` mode 0 (15W), held for every measurement |
 | camera | j5create JVCU100, MJPG 640x480, measured 30.027 fps |
 
@@ -182,6 +182,12 @@ Not real-time, not a safety function, and the policy comparison is simulated.
 The invalid-output rate rests on ten frames. ROS 2 use is plumbing plus one
 QoS decision. The full list, and what would have to exist before output like
 this could move an actuator, is in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md).
+
+## How this was built
+
+I designed the system, ran every measurement on a Jetson Orin Nano Super, and
+wrote the analysis. I used Claude Code as a coding assistant, which is why many
+of the commits are authored by Claude.
 
 ## Licence
 

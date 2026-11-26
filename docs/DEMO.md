@@ -26,7 +26,7 @@ speed and copy a line out of it. All four false of a video of a screen.
 
 ---
 
-# Recording 1 — shots 1 and 2 (about 4.5 min raw)
+# Recording 1: shots 1 and 2 (about 4.5 min raw)
 
 One pane, no hardware. It needs Python 3.10+ and pytest 7 or newer, nothing
 else. On the Jetson that means the venv: apt's pytest is 6.2.5 and fails on
@@ -69,7 +69,7 @@ the table. Check any cast before committing it:
 grep -c "$USER@" ~/edge-inference-pipeline/results/demo/core.cast    # want 0
 ```
 
-**2.** Shot 1 — type this and let it finish (about 12 s):
+**2.** Shot 1: type this and let it finish (about 12 s):
 
 ```bash
 git clone --depth 1 https://github.com/vivh3/edge-inference-pipeline demo-clone
@@ -79,7 +79,7 @@ cd demo-clone && python3 -m pytest -q
 Wait for the `passed` line, 133 in the committed recording. That is the shot: no accelerator, no ROS, no model
 download. Do not scroll.
 
-**3.** Shot 2 — type this and let it finish (about 4 min; speed it up in the
+**3.** Shot 2: type this and let it finish (about 4 min; speed it up in the
 edit):
 
 ```bash
@@ -98,16 +98,16 @@ into the cast.
 
 Leave the keyboard alone while the simulation runs. Stray keys are recorded.
 
-**What to caption in the edit.** Not the drop rate — both policies drop ~99%.
+**What to caption in the edit.** Not the drop rate: both policies drop ~99%.
 The line is: `latest` answers in 6.1 s and `fifo_bounded` in 55 s while
 publishing the same number of results. *Dropping is not what separates them;
-which frames survive is.* Also caption `SIMULATED` — synthetic engine, real
+which frames survive is.* Also caption `SIMULATED`: synthetic engine, real
 policies. Quote the figures the recording shows; the README's 54.798 s is the
 240 s run.
 
 ---
 
-# Recording 2 — shots 3, 4 and 5 (about 2 min raw)
+# Recording 2: shots 3, 4 and 5 (about 2 min raw)
 
 On the Jetson. The model takes ~100 s to load, so **warm the graph first and
 record an attach**. Nothing in the recording waits for a load.
@@ -138,6 +138,8 @@ stacked full width because the report lines are about 150 characters long.
 
 `out_dir` on the telemetry node is not optional. Its default is
 `results/sustained`, and a demo run would overwrite the committed Gate 2 data.
+(Gate 2 is the project milestone where the pipeline first ran end to end in
+ROS 2 on the board.)
 
 The stale limit is 13.5 s because of how old a record gets in normal
 operation. It arrives 6.5 s old and the next one lands 6.45 s
@@ -272,7 +274,7 @@ Then `tmux kill-session -t demo` stops the nodes.
 
 ---
 
-# Recording 3 — the rig (30 s, phone)
+# Recording 3: the rig (30 s, phone)
 
 The camera, the Jetson, and whatever the camera is pointed at. The only shot
 that points at hardware rather than a screen. Shoot it last, when you know

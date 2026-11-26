@@ -1,5 +1,9 @@
 # Performance: methodology and the bottleneck investigation
 
+> Gates are the project's milestones. Gate 1: baseline measurement on hardware.
+> Gate 2: ROS 2 integration and an end-to-end run. Gate 3: the bottleneck
+> investigation and sustained load.
+>
 > **Status: Gates 1-3 measured.** The overload comparison comes from the
 > synthetic simulation and is labelled `SIMULATED` in its own summary files.
 > No estimate is written here as if it were a measurement, and where one was
@@ -176,7 +180,7 @@ equals `captured` exactly, for all three policies. The summaries carry the queue
 at stop so you can check it.
 
 **The bound was derived before it was measured.** `fifo_bounded(8)` saturates near
-`(capacity + 1) x service time` — a frame admitted to a full queue waits behind eight
+`(capacity + 1) x service time`: a frame admitted to a full queue waits behind eight
 others, then pays for its own inference. That predicts 9 x 6.084 = 54.76 s against a
 measured 54.798 s p50. Under `latest`, result age sits at one service time plus one
 inter-frame interval: 6.117 s predicted, 6.123 s measured. Under `fifo_unbounded` it
