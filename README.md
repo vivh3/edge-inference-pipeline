@@ -186,8 +186,7 @@ this could move an actuator, is in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md).
 ## How this was built
 
 I designed the system, ran every measurement on a Jetson Orin Nano Super, and
-wrote the analysis. I used Claude Code as a coding assistant, which is why many
-of the commits are authored by Claude.
+wrote the analysis. I used Claude Code as a coding assistant.
 
 ## Licence
 
