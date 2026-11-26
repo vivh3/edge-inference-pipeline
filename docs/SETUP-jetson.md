@@ -2,8 +2,8 @@
 
 Target: **NVIDIA Jetson Orin Nano Super Developer Kit**, 8 GB, JetPack 6.x.
 
-Gate 1 is a feasibility gate, not a tuning gate. It answers three questions and
-then stops:
+Gate 1, the project's first milestone on hardware, is a feasibility gate, not a
+tuning gate. It answers three questions and then stops:
 
 1. Does the model clear the output contract?
 2. How much memory is left with it loaded?
@@ -533,8 +533,8 @@ fields and emits a near-constant answer. No prompt change fixes a model that
 gives the same reply to an empty floor and a blocked doorway.
 
 The cost of that choice is 519 MB of headroom against 3819 MB, and swapping
-during inference. That is a Gate 2 constraint to manage, not a reason to ship
-a model that cannot see.
+during inference. That is a constraint for Gate 2, the ROS 2 integration
+milestone, to manage, not a reason to ship a model that cannot see.
 
 Measured since: four empty `rclpy` nodes cost 108 MB, so the planned node
 layout leaves roughly 350 MB with this model loaded. See
